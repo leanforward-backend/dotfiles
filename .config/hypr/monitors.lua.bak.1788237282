@@ -9,11 +9,6 @@ hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
 hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.6 })
 hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto-right", scale = 1 })
 
--- Unity Editor has no internal UI scaling on Linux, so its size follows this
--- monitor's scale. Drop below 1 to shrink everything on this screen:
--- 0.8 gives a 4300x1800 logical grid (both integers, so no fractional blur).
--- hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto-right", scale = 0.8 })
-
 -- Configure a specific monitor.
 -- hl.monitor({ output = "DP-2", mode = "2560x1440@144", position = "0x0", scale = 1 })
 

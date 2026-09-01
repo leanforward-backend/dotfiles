@@ -15,15 +15,11 @@ style=block
 blink=no
 
 [key-bindings]
-clipboard-copy=Control+Insert Control+c XF86Copy
+clipboard-copy=Control+Insert Control+Shift+c XF86Copy
 primary-paste=none
-clipboard-paste=Shift+Insert Control+v XF86Paste
+clipboard-paste=Shift+Insert Control+Shift+v XF86Paste
 
 [text-bindings]
-# Copy/paste are swapped above (Ctrl+c copies, Ctrl+v pastes), so send the
-# original control codes on the shifted variants instead.
-\x03=Control+Shift+c
-\x16=Control+Shift+v
 # Send Shift+Return as CSI-u so TUIs can distinguish it from Return.
 \x1b[13;2u=Shift+Return
 # Send Alt+Shift+Return as CSI-u so tmux can match M-S-Enter.
