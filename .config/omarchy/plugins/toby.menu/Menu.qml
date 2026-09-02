@@ -286,7 +286,7 @@ Item {
 
   // Desktop-entry ids pinned to the top of the Apps menu, in display order.
   // Everything else keeps the default alphabetical order behind these.
-  readonly property var pinnedAppIds: ["brave-browser", "antigravity-ide", "org.gnome.Nautilus", "spotify", "unityhub", "google-chrome"]
+  readonly property var pinnedAppIds: ["brave-browser", "antigravity-ide", "org.gnome.Nautilus", "spotify", "unityhub", "google-chrome", "github-desktop"]
 
   function pinnedAppRank(appId) {
     var idx = root.pinnedAppIds.indexOf(appId)
