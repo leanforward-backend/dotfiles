@@ -28,7 +28,7 @@
 	autoupdate = true        # Apply stored conflict resolutions automatically
 [user]
 	name = Toby Crust
-	email = leanforward.designs@gmail.com
+	email = toby@slik.com.au
 [filter "lfs"]
 	process = git-lfs filter-process
 	required = true
