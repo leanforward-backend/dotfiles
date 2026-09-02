@@ -6,4 +6,4 @@
 
 
 # Added by Antigravity CLI installer
-export PATH="/home/toby/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
