@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Launches the Unity editor with an explicit GTK scale factor.
+#
+# Unity's Linux editor sizes its whole UI from gtk_widget_get_scale_factor(),
+# so GDK_SCALE is what controls how big everything *inside* the window is.
+# Unity Hub launches the editor with GDK_SCALE=2, which is why the UI renders
+# at double size; this bypasses Hub so the value sticks.
+#
+# GDK_SCALE is integer-only (1 or 2). GDK_DPI_SCALE additionally scales text
+# only, and does accept fractions, so it can take the edge off 1x if needed.
+#
+#   unity-editor                    # current project at 1x
+#   UI_SCALE=2 unity-editor         # back to Hub's 2x
+#   TEXT_SCALE=1.15 unity-editor    # 1x with slightly larger text
+#   unity-editor -projectpath /some/other/project
+set -euo pipefail
+
+EDITOR_BIN="${UNITY_EDITOR_BIN:-$HOME/Unity/Hub/Editor/6000.5.9f1/Editor/unityhub-unity-editor-6000.5.9f1}"
+DEFAULT_PROJECT="${UNITY_PROJECT:-$HOME/StarlineStation/unity/StarlineStation}"
+
+scale_file="${XDG_CONFIG_HOME:-$HOME/.config}/unity-ui-scale"
+_cfg=1
+[ -r "$scale_file" ] && _cfg="$(tr -dc '0-9' < "$scale_file" | head -c 2)"
+[ -z "$_cfg" ] && _cfg=1
+export GDK_SCALE="${UI_SCALE:-$_cfg}"
+export GDK_DPI_SCALE="${TEXT_SCALE:-1}"
+
+if [ ! -x "$EDITOR_BIN" ]; then
+  echo "unity-editor: editor binary not found: $EDITOR_BIN" >&2
+  echo "Set UNITY_EDITOR_BIN to override." >&2
+  exit 1
+fi
+
+# Caller-supplied args win; otherwise open the default project.
+if [ "$#" -gt 0 ]; then
+  exec "$EDITOR_BIN" "$@"
+fi
+
+exec "$EDITOR_BIN" -projectpath "$DEFAULT_PROJECT"

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Unity Hub
+Comment=The Official Unity Hub
+GenericName=Unity Hub
+# GDK_SCALE=1 pins the GTK scale factor Unity reads for its editor UI size.
+# Without it Hub hands the editor GDK_SCALE=2 and everything inside the
+# editor window renders at double size.
+Exec=unity-hub %U
+Icon=unityhub
+Type=Application
+StartupNotify=true
+Categories=Development;
+MimeType=x-scheme-handler/unityhub;application/x-unityhub;

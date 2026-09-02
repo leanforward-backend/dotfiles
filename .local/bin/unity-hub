@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Launches Unity Hub with a pinned GTK scale factor.
+#
+# Unity's editor sizes its whole UI from the GTK scale factor, and Hub passes
+# its own GDK_SCALE down to every editor it spawns. Hub's Electron/GDK sets
+# that to 2 on a HiDPI display unless it is given an explicit value -- which
+# is what this does. The value lives in ~/.config/unity-ui-scale so the bar
+# widget and the direct launcher share one source of truth.
+#
+# GDK_SCALE is integer-only: 1 (normal) or 2 (double size).
+set -euo pipefail
+
+scale_file="${XDG_CONFIG_HOME:-$HOME/.config}/unity-ui-scale"
+scale=1
+[ -r "$scale_file" ] && scale="$(tr -dc '0-9' < "$scale_file" | head -c 2)"
+[ -z "$scale" ] && scale=1
+
+export GDK_SCALE="$scale"
+echo "$(date '+%H:%M:%S') unity-hub launching Hub with GDK_SCALE=$scale" \
+  >> "${XDG_RUNTIME_DIR:-/tmp}/unity-ui-scale.log" 2>/dev/null || true
+exec unityhub "$@"
