@@ -61,6 +61,9 @@
           "id": "toby.monitor"
         },
         {
+          "id": "toby.window-scale"
+        },
+        {
           "id": "omarchy.power"
         }
       ]
