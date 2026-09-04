@@ -31,3 +31,9 @@
 -- (this overrides the default Google Maps webapp shortcut on that key).
 hl.unbind("SUPER + SHIFT + S")
 o.bind("SUPER + SHIFT + S", "Screenshot", "omarchy-capture-screenshot")
+
+-- Volume keys step by 2% instead of the default 5%.
+hl.unbind("XF86AudioRaiseVolume")
+hl.unbind("XF86AudioLowerVolume")
+o.bind("XF86AudioRaiseVolume", "Volume up", "omarchy-audio-output-volume +2", { locked = true, repeating = true })
+o.bind("XF86AudioLowerVolume", "Volume down", "omarchy-audio-output-volume -2", { locked = true, repeating = true })
