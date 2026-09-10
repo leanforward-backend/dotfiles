@@ -77,7 +77,17 @@ Item {
 
   // Shared application engine (entries, hidden filters, icons, launch,
   // removal), owned by the shell and also used by the standalone launcher.
-  readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
+  // Omarchy 4.0.3 can revoke the shell proxy of a cloned menu. Keep the
+  // packaged app engine available when that injected connection is missing.
+  readonly property var appLibrary: root.shell && root.shell.appLibrary
+    ? root.shell.appLibrary : fallbackAppLibrary.item
+  onAppLibraryChanged: if (root.appLibrary && root.providersLoaded["apps"]) root.mergeAppRows()
+
+  Loader {
+    id: fallbackAppLibrary
+    active: !root.shell || !root.shell.appLibrary
+    source: root.omarchyPath + "/shell/services/AppLibrary.qml"
+  }
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
   onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
@@ -286,7 +296,7 @@ Item {
 
   // Desktop-entry ids pinned to the top of the Apps menu, in display order.
   // Everything else keeps the default alphabetical order behind these.
-  readonly property var pinnedAppIds: ["brave-browser", "antigravity-ide", "org.gnome.Nautilus", "spotify", "unityhub", "google-chrome", "github-desktop"]
+  readonly property var pinnedAppIds: ["brave-browser", "antigravity-ide", "org.gnome.Nautilus", "spotify", "unityhub", "google-chrome", "github-desktop", "rider"]
 
   function pinnedAppRank(appId) {
     var idx = root.pinnedAppIds.indexOf(appId)
