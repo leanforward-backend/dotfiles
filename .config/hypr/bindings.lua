@@ -55,3 +55,8 @@ o.bind("XF86AudioNext", "Next track", media_keys .. " next", { locked = true })
 o.bind("XF86AudioPrev", "Previous track", media_keys .. " previous", { locked = true })
 o.bind("ALT + XF86AudioPlay", "Next track", media_keys .. " next", { locked = true })
 o.bind("ALT + SHIFT + XF86AudioPlay", "Previous track", media_keys .. " previous", { locked = true })
+
+-- Scrub the current source by 15s. SHIFT + next/prev were free; SHIFT +
+-- play/pause stays on omarchy's "switch media source".
+o.bind("SHIFT + XF86AudioNext", "Forward 15s", media_keys .. " forward 15", { locked = true, repeating = true })
+o.bind("SHIFT + XF86AudioPrev", "Back 15s", media_keys .. " back 15", { locked = true, repeating = true })
