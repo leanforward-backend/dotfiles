@@ -37,3 +37,21 @@ hl.unbind("XF86AudioRaiseVolume")
 hl.unbind("XF86AudioLowerVolume")
 o.bind("XF86AudioRaiseVolume", "Volume up", "omarchy-audio-output-volume +2", { locked = true, repeating = true })
 o.bind("XF86AudioLowerVolume", "Volume down", "omarchy-audio-output-volume -2", { locked = true, repeating = true })
+
+-- Media keys go through the toby.media bar widget's pin: while a source is
+-- pinned there they drive that player over MPRIS, otherwise the script hands
+-- off to omarchy-shell and the default "whatever is playing" behaviour.
+-- SHIFT + Play/Pause still cycles the source through omarchy's media service.
+local media_keys = "~/.config/omarchy/plugins/toby.media/media-keys.sh"
+hl.unbind("XF86AudioPlay")
+hl.unbind("XF86AudioPause")
+hl.unbind("XF86AudioNext")
+hl.unbind("XF86AudioPrev")
+hl.unbind("ALT + XF86AudioPlay")
+hl.unbind("ALT + SHIFT + XF86AudioPlay")
+o.bind("XF86AudioPlay", "Play/pause", media_keys .. " play-pause", { locked = true })
+o.bind("XF86AudioPause", "Play/pause", media_keys .. " play-pause", { locked = true })
+o.bind("XF86AudioNext", "Next track", media_keys .. " next", { locked = true })
+o.bind("XF86AudioPrev", "Previous track", media_keys .. " previous", { locked = true })
+o.bind("ALT + XF86AudioPlay", "Next track", media_keys .. " next", { locked = true })
+o.bind("ALT + SHIFT + XF86AudioPlay", "Previous track", media_keys .. " previous", { locked = true })

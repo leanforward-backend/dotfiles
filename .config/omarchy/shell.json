@@ -26,7 +26,7 @@
           "id": "omarchy.clock",
           "format": "ddd d MMM HH:mm",
           "formatAlt": "d MMMM 'W'ww yyyy",
-          "verticalFormat": "HH\n—\nmm"
+          "verticalFormat": "HH\n\u2014\nmm"
         },
         {
           "id": "omarchy.keyboard-layout"
@@ -62,6 +62,9 @@
         },
         {
           "id": "toby.window-scale"
+        },
+        {
+          "id": "toby.media"
         },
         {
           "id": "omarchy.power"
