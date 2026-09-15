@@ -63,32 +63,40 @@ Panel {
   }
 
   function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
+    if (root.bar && typeof root.bar.setCenterHoverRevealSuppressed === "function")
+      root.bar.setCenterHoverRevealSuppressed(value)
+    else if (root.bar && "centerHoverRevealSuppressed" in root.bar)
       root.bar.centerHoverRevealSuppressed = value
   }
 
-  // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
-  property var report: null
+  // Parsed Open-Meteo forecast response (current + hourly + daily). Kept on
+  // failure so stale data stays visible.
   property var dailyForecastReport: null
-  property string wttrLocation: ""
+
+  // Coordinates resolved at runtime when the configured location has none:
+  // IP geolocation for auto-detect, Open-Meteo geocoding for a name-only
+  // weather.json. `forName` records which configured name it was resolved
+  // for so a stale resolution is never reused after the name changes.
+  property var resolvedLocation: ({ name: "", country: "", latitude: null, longitude: null, forName: "" })
 
   // Configured location, read from the weather.json state file (owned by
-  // omarchy-weather-location). The query is the wttr.in path segment
+  // omarchy-weather-location). The key is a stable string identifying it
   // (coordinates when stored, else the encoded name); empty means IP
   // auto-detect. The watch makes hand edits take effect live.
   property var configuredLocationState: ({ name: "", latitude: null, longitude: null })
   readonly property string configuredLocation: configuredLocationState.name
-  readonly property string locationQuery: Model.wttrLocationQuery(configuredLocationState.name, configuredLocationState.latitude, configuredLocationState.longitude)
+  readonly property string locationQuery: Model.locationKey(configuredLocationState.name, configuredLocationState.latitude, configuredLocationState.longitude)
 
   // Keep the previous report visible while the new location loads. The
   // editor remains open with a spinner, so stale data is never presented
   // under the newly configured location label.
   onLocationQueryChanged: {
     if (savingLocation) savingLocationQueryStarted = true
-    forecastRetries = 0
     dailyForecastRetries = 0
-    forecastProc.running = false
     dailyForecastProc.running = false
+    locationProc.running = false
+    nameGeocodeProc.running = false
+    resolvedLocation = { name: "", country: "", latitude: null, longitude: null, forName: "" }
     Qt.callLater(refresh)
   }
 
@@ -111,7 +119,6 @@ Panel {
     onTriggered: locationFile.reload()
   }
 
-  property int forecastRetries: 0
   property int dailyForecastRetries: 0
 
   // Click-to-edit state for the location label.
@@ -126,22 +133,20 @@ Panel {
   // Shared hero/bar icon state, updated with each successful weather response.
   property string label: ""
 
-  // wttr's current conditions when available; open-meteo's (bundled with the
-  // much faster daily forecast fetch) fill the hero while wttr is in flight.
+  // Current conditions come bundled with the Open-Meteo forecast fetch.
   readonly property bool hasConfiguredCoordinates: !isNaN(parseFloat(String(configuredLocationState.latitude))) && !isNaN(parseFloat(String(configuredLocationState.longitude)))
-  readonly property var openMeteoCurrent: Model.openMeteoCurrentCondition(dailyForecastReport)
-  readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
-  readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
-  readonly property var forecastDays: buildForecastDays()
+  readonly property bool hasResolvedCoordinates: !isNaN(parseFloat(String(resolvedLocation.latitude))) && !isNaN(parseFloat(String(resolvedLocation.longitude)))
+  readonly property var current: Model.openMeteoCurrentCondition(dailyForecastReport)
+  readonly property var forecastDays: openMeteoForecastDays()
   readonly property var hourlyForecast: Model.openMeteoHourlyForecast(dailyForecastReport, useImperial)
-  readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
+  readonly property string reportCountry: resolvedLocation.country || ""
 
   readonly property bool useImperial: Model.shouldUseImperial(setting("unit", ""), Qt.locale().name, reportCountry)
 
   // Auto-refresh interval in minutes; clamped to a sane minimum.
   readonly property int refreshMinutes: Math.max(1, parseInt(setting("refreshMinutes", 15), 10) || 15)
 
-  readonly property string reportLocation:  configuredLocation || wttrLocation || (areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : "")
+  readonly property string reportLocation:  configuredLocation || resolvedLocation.name || ""
   readonly property string reportTempNum:   current ? String(useImperial ? current.temp_F : current.temp_C) : ""
   readonly property string tempUnit:        "°" + (useImperial ? "F" : "C")
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
@@ -152,6 +157,7 @@ Panel {
   readonly property string reportRainNow:    current && current.precipitationMm !== undefined ? (useImperial ? (Model.roundedDecimal(parseFloat(current.precipitationMm) / 25.4, 2) + " in") : (current.precipitationMm + " mm")) : ""
   readonly property string reportCloud:      current && current.cloudCover !== undefined ? (current.cloudCover + "%") : ""
   readonly property string reportPressure:   current && current.pressureHpa !== undefined ? (current.pressureHpa + " hPa") : ""
+  readonly property string summaryText:      current ? [reportLocation, "Temp " + reportTempNum + tempUnit, "Wind " + reportWind].filter(function(s) { return !!s }).join("  ·  ") : "Weather unavailable"
 
   function todayDailyValue(field) {
     var daily = dailyForecastReport && dailyForecastReport.daily ? dailyForecastReport.daily : null
@@ -190,26 +196,34 @@ Panel {
     // Each full refresh cycle gets a fresh retry budget, so an earlier
     // exhausted round (e.g. waking with the network still down) doesn't
     // starve retries for the rest of the session.
-    forecastRetries = 0
     dailyForecastRetries = 0
-    if (!forecastProc.running) forecastProc.running = true
-    if (root.locationQuery === "" && !locationProc.running) locationProc.running = true
-    // With stored coordinates this fetches open-meteo right away — no need
-    // to wait for the slow wttr response. Without them it's a no-op until
-    // wttr reports the detected area.
-    refreshDailyForecast(null)
+
+    if (hasConfiguredCoordinates) {
+      refreshDailyForecast()
+      return
+    }
+
+    // Name-only weather.json: geocode the name once, then reuse it.
+    if (configuredLocation !== "") {
+      if (hasResolvedCoordinates && resolvedLocation.forName === configuredLocation) refreshDailyForecast()
+      else if (!nameGeocodeProc.running) startNameGeocode()
+      return
+    }
+
+    // Auto-detect: fetch with the last known coordinates right away so the
+    // icon updates promptly, and re-detect in case the network moved.
+    if (hasResolvedCoordinates) refreshDailyForecast()
+    if (!locationProc.running) locationProc.running = true
   }
 
-  function refreshDailyForecast(sourceReport) {
+  function refreshDailyForecast() {
     if (dailyForecastProc.running) return
 
     var lat = parseFloat(String(root.configuredLocationState.latitude))
     var lon = parseFloat(String(root.configuredLocationState.longitude))
     if (isNaN(lat) || isNaN(lon)) {
-      var area = sourceReport && sourceReport.nearest_area && sourceReport.nearest_area[0] ? sourceReport.nearest_area[0] : root.areaInfo
-      if (!area) return
-      lat = parseFloat(String(area.latitude || ""))
-      lon = parseFloat(String(area.longitude || ""))
+      lat = parseFloat(String(root.resolvedLocation.latitude))
+      lon = parseFloat(String(root.resolvedLocation.longitude))
     }
     if (isNaN(lat) || isNaN(lon)) return
 
@@ -269,7 +283,6 @@ Panel {
 
   function clearLocation() {
     persistLocation("", null, null)
-    wttrLocation = ""
     cancelEditingLocation()
   }
 
@@ -318,16 +331,14 @@ Panel {
     geocodeProc.running = true
   }
 
-  function buildForecastDays() {
-    return Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
-  }
-
   function openMeteoForecastDays() {
     return Model.openMeteoForecastDays(dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
   }
 
-  function wttrNextForecastDays() {
-    return Model.wttrNextForecastDays(report, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+  function startNameGeocode() {
+    nameGeocodeProc.command = ["curl", "-fsS", "--max-time", "5",
+      "https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(root.configuredLocation) + "&count=1&language=en&format=json"]
+    nameGeocodeProc.running = true
   }
 
   function isFutureForecastDate(dateString) {
@@ -375,59 +386,14 @@ Panel {
     return Model.iconForOpenMeteoCode(code)
   }
 
-  // Mirrors omarchy-weather-icon's wttr.in code → nerd-font glyph mapping.
+  // Mirrors omarchy-weather-icon's code → nerd-font glyph mapping.
   function iconForCode(code, night) {
     return Model.iconForCode(code, night)
   }
 
-  Process {
-    id: forecastProc
-    command: ["curl", "-fsS", "--max-time", "10", "https://wttr.in/" + root.locationQuery + "?format=j1"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var raw = String(text || "").trim()
-        if (!raw) {
-          root.scheduleForecastRetry()
-          return
-        }
-        try {
-          var parsed = JSON.parse(raw)
-          root.report = parsed
-          if (!root.hasConfiguredCoordinates)
-            root.label = Model.provisionalCurrentIcon(parsed.current_condition && parsed.current_condition[0], root.label)
-          root.forecastRetries = 0
-          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "wttr"))
-            root.finishSavingLocation()
-          // Stored coordinates already drove the fast open-meteo fetch from
-          // refresh(); only auto-detect needs the area wttr reported.
-          if (isNaN(parseFloat(String(root.configuredLocationState.latitude))))
-            root.refreshDailyForecast(parsed)
-        } catch (e) {
-          // Keep last-good report visible, but try again shortly.
-          root.scheduleForecastRetry()
-        }
-      }
-    }
-  }
-
-  // wttr.in can be slow or flaky, especially for a location it hasn't
-  // cached yet. Retry a few times before leaving it to the refresh timer.
-  function scheduleForecastRetry() {
-    if (forecastRetries >= 3) return
-    forecastRetries++
-    forecastRetryTimer.restart()
-  }
-
-  Timer {
-    id: forecastRetryTimer
-    interval: 2500
-    onTriggered: if (!forecastProc.running) forecastProc.running = true
-  }
-
-  // With configured coordinates this fetch is the only thing that updates the
-  // bar icon, so a dropped response (e.g. waking before the network is back)
-  // must retry rather than wait out the refresh timer with a stale icon.
+  // This fetch is the only thing that updates the bar icon, so a dropped
+  // response (e.g. waking before the network is back) must retry rather than
+  // wait out the refresh timer with a stale icon.
   function scheduleDailyForecastRetry() {
     if (dailyForecastRetries >= 3) return
     dailyForecastRetries++
@@ -437,7 +403,7 @@ Panel {
   Timer {
     id: dailyForecastRetryTimer
     interval: 2500
-    onTriggered: root.refreshDailyForecast(null)
+    onTriggered: root.refreshDailyForecast()
   }
 
   Process {
@@ -456,8 +422,7 @@ Panel {
           root.dailyForecastReport = parsed
           root.label = Model.currentIcon(parsedCurrent, root.label)
           root.dailyForecastRetries = 0
-          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "open-meteo"))
-            root.finishSavingLocation()
+          root.finishSavingLocation()
         } catch (e) {
           // Keep last-good daily forecast visible, but try again shortly.
           root.scheduleDailyForecastRetry()
@@ -494,24 +459,52 @@ Panel {
       locationFile.reload()
       if (!root.savingLocationQueryStarted) {
         root.savingLocationQueryStarted = true
-        root.forecastRetries = 0
         root.dailyForecastRetries = 0
-        forecastProc.running = false
         dailyForecastProc.running = false
         Qt.callLater(root.refresh)
       }
     }
   }
 
+  // IP geolocation for auto-detect. ip-api.com's free tier is plain HTTP
+  // only; ipinfo.io is the HTTPS fallback when it is unreachable or
+  // rate-limited. Model.parseIpGeolocation understands both shapes.
   Process {
     id: locationProc
-    command: ["curl", "-fsS", "--max-time", "4", "https://wttr.in/?format=%l"]
+    command: ["sh", "-c",
+      "curl -fsS --max-time 5 'http://ip-api.com/json/?fields=status,city,country,countryCode,lat,lon' || curl -fsS --max-time 5 'https://ipinfo.io/json'"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var raw = String(text || "").trim()
-        if (!raw) return
-        root.wttrLocation = raw.split(",")[0]
+        var detected = Model.parseIpGeolocation(text)
+        if (!detected) return
+        detected.forName = ""
+        root.resolvedLocation = detected
+        root.refreshDailyForecast()
+      }
+    }
+  }
+
+  // Open-Meteo geocoding for a name-only weather.json (no stored coordinates).
+  Process {
+    id: nameGeocodeProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var results = Model.parseGeocodingResults(text)
+        if (!results.length) {
+          // Nothing to show for this name; don't strand the save spinner.
+          root.finishSavingLocation()
+          return
+        }
+        root.resolvedLocation = {
+          name: results[0].name,
+          country: results[0].country || "",
+          latitude: results[0].latitude,
+          longitude: results[0].longitude,
+          forName: root.configuredLocation
+        }
+        root.refreshDailyForecast()
       }
     }
   }

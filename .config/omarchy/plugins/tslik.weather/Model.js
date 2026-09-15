@@ -20,10 +20,11 @@ function parseLocationFile(raw) {
   }
 }
 
-// wttr.in path segment for a configured location: exact coordinates when
-// both are present, the URL-encoded name as a fallback (hand-edited
-// weather.loc files may only carry a name), empty for IP auto-detect.
-function wttrLocationQuery(location, latitude, longitude) {
+// Stable key for a configured location: exact coordinates when both are
+// present, the URL-encoded name as a fallback (hand-edited weather.json
+// files may only carry a name), empty for IP auto-detect. A change in the
+// key is what triggers a refetch.
+function locationKey(location, latitude, longitude) {
   var lat = parseFloat(String(latitude))
   var lon = parseFloat(String(longitude))
   if (!isNaN(lat) && !isNaN(lon)) return lat + "," + lon
@@ -47,6 +48,7 @@ function parseGeocodingResults(raw) {
       out.push({
         name: String(r.name),
         description: region,
+        country: r.country ? String(r.country) : "",
         latitude: r.latitude,
         longitude: r.longitude
       })
@@ -54,6 +56,38 @@ function parseGeocodingResults(raw) {
     return out
   } catch (e) {
     return []
+  }
+}
+
+// IP geolocation response → {name, country, latitude, longitude}, or null.
+// Accepts ip-api.com ({status, city, country, lat, lon}) and ipinfo.io
+// ({city, country, loc: "lat,lon"}).
+function parseIpGeolocation(raw) {
+  try {
+    var data = JSON.parse(String(raw || ""))
+    if (!data || typeof data !== "object") return null
+    if (data.status !== undefined && data.status !== "success") return null
+
+    var latitude = NaN
+    var longitude = NaN
+    if (data.lat !== undefined && data.lon !== undefined) {
+      latitude = parseFloat(data.lat)
+      longitude = parseFloat(data.lon)
+    } else if (typeof data.loc === "string" && data.loc.indexOf(",") > 0) {
+      var parts = data.loc.split(",")
+      latitude = parseFloat(parts[0])
+      longitude = parseFloat(parts[1])
+    }
+    if (isNaN(latitude) || isNaN(longitude)) return null
+
+    return {
+      name: typeof data.city === "string" ? data.city : "",
+      country: typeof data.country === "string" ? data.country : "",
+      latitude: latitude,
+      longitude: longitude
+    }
+  } catch (e) {
+    return null
   }
 }
 
@@ -214,10 +248,9 @@ function openMeteoHourlyForecast(forecastReport, useImperial) {
   return result
 }
 
-// Open-Meteo bundles current conditions with the daily forecast request and
-// answers far faster than wttr.in. Normalize them to wttr's
-// current_condition shape so the panel can use either source
-// interchangeably. Open-Meteo reports metric (°C, km/h).
+// Open-Meteo bundles current conditions with the forecast request.
+// Normalized to the field names the panel reads. Open-Meteo reports metric
+// (°C, km/h).
 function openMeteoCurrentCondition(dailyForecastReport) {
   var current = dailyForecastReport && dailyForecastReport.current ? dailyForecastReport.current : null
   if (!current || current.temperature_2m === undefined || current.temperature_2m === null) return null
@@ -248,30 +281,6 @@ function currentIcon(current, fallback) {
   if (current.weatherCode !== undefined && current.weatherCode !== null)
     return iconForCode(current.weatherCode, false)
   return fallback || ""
-}
-
-// wttr.in has no day/night flag. Use its icon only to fill an empty initial
-// state, never to replace a day/night-aware icon resolved by Open-Meteo.
-function provisionalCurrentIcon(current, resolvedIcon) {
-  return resolvedIcon || currentIcon(current, "")
-}
-
-function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
-  return hasConfiguredCoordinates ? source === "open-meteo" : source === "wttr"
-}
-
-function wttrNextForecastDays(report, todayString) {
-  var days = report && report.weather ? report.weather : []
-  var result = []
-  for (var i = 0; i < days.length && result.length < 3; ++i) {
-    if (isFutureForecastDate(days[i].date, todayString)) result.push(days[i])
-  }
-  return result
-}
-
-function buildForecastDays(report, dailyForecastReport, todayString) {
-  var days = openMeteoForecastDays(dailyForecastReport, todayString)
-  return days.length > 0 ? days : wttrNextForecastDays(report, todayString)
 }
 
 function bareTempForDay(day, kind, useImperial) {
@@ -336,8 +345,9 @@ function iconForCode(code, night) {
 if (typeof module !== "undefined") {
   module.exports = {
     parseLocationFile: parseLocationFile,
-    wttrLocationQuery: wttrLocationQuery,
+    locationKey: locationKey,
     parseGeocodingResults: parseGeocodingResults,
+    parseIpGeolocation: parseIpGeolocation,
     locationCommit: locationCommit,
     isFutureForecastDate: isFutureForecastDate,
     roundedTemp: roundedTemp,
@@ -351,10 +361,6 @@ if (typeof module !== "undefined") {
     openMeteoForecastDays: openMeteoForecastDays,
     openMeteoCurrentCondition: openMeteoCurrentCondition,
     currentIcon: currentIcon,
-    provisionalCurrentIcon: provisionalCurrentIcon,
-    weatherResponseCompletesSave: weatherResponseCompletesSave,
-    wttrNextForecastDays: wttrNextForecastDays,
-    buildForecastDays: buildForecastDays,
     bareTempForDay: bareTempForDay,
     dayIcon: dayIcon,
     iconForOpenMeteoCode: iconForOpenMeteoCode,

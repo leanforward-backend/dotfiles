@@ -75,7 +75,10 @@ BarWidget {
 
     onPressed: function(b) {
       if (!root.bar) return
-      if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
+      if (b === Qt.RightButton) {
+        var summary = panelLoader.item && panelLoader.item.summaryText ? panelLoader.item.summaryText : "Weather unavailable"
+        root.bar.run("omarchy-notification-send " + JSON.stringify(summary).replace(/\$/g, "\\$").replace(/`/g, "\\`"))
+      }
       else if (b === Qt.MiddleButton) root.refresh()
       else root.togglePanel()
     }
