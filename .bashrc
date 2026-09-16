@@ -28,5 +28,5 @@ export PATH="$HOME/.grok/bin:$PATH"
 # <<< grok installer <<<
 
 # >>> Codex installer >>>
-export PATH="/home/s/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 # <<< Codex installer <<<
