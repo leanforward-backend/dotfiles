@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "toby.media",
+  "name": "Media Sources",
+  "version": "1.0.0",
+  "author": "toby",
+  "description": "Play/pause each MPRIS source and pin which one the media keys drive",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Media Sources",
+    "description": "Play/pause each MPRIS source and pin which one the media keys drive",
+    "category": "Media",
+    "allowMultiple": false
+  }
+}

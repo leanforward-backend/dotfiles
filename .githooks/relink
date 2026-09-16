@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Shared body for the post-merge / post-checkout / post-commit hooks: re-run
+# link.sh so files the repo just gained are linked into $HOME. Quiet when
+# nothing changed, and never fails the git operation that triggered it.
+set -u
+repo="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+[ -x "$repo/link.sh" ] || exit 0
+"$repo/link.sh" --quiet || echo "dotfiles: link.sh failed (run ./link.sh by hand)" >&2
+exit 0
