@@ -15,6 +15,10 @@
 -- Add a new binding.
 -- o.bind("SUPER + SHIFT + R", "SSH", "alacritty -e ssh your-server")
 
+-- Move the focused scratchpad window back to the current workspace.
+o.bind("SUPER + SHIFT + ALT + S", "Move window out of scratchpad",
+  hl.dsp.window.move({ workspace = "+0" }))
+
 -- Change an existing binding by unbinding it first, then binding the key again.
 -- This example changes SUPER+SPACE from the launcher to the Omarchy root menu.
 -- hl.unbind("SUPER + SPACE")
