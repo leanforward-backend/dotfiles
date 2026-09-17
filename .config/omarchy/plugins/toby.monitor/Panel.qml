@@ -82,6 +82,102 @@ Panel {
     root.setNightlightStrength(root.currentNightlightStrength() + delta)
   }
 
+  // ---- Night light schedule ----
+  // A systemd user timer (nightlight-schedule.timer) turns the night light on
+  // and off at fixed times; nightlight-schedule.sh owns the times and the
+  // enable/disable plumbing. The panel only shows and toggles it.
+  property bool scheduleEnabled: false
+  property string scheduleOn: "20:30"
+  property string scheduleOff: "07:00"
+
+  function scheduleScript() {
+    return Quickshell.env("HOME") + "/.config/omarchy/plugins/toby.monitor/nightlight-schedule.sh"
+  }
+
+  function formatClock(hhmm) {
+    var parts = String(hhmm || "").split(":")
+    var h = parseInt(parts[0], 10)
+    var m = parseInt(parts[1], 10)
+    if (isNaN(h) || isNaN(m)) return String(hhmm || "")
+    var suffix = h >= 12 ? "PM" : "AM"
+    var hour12 = h % 12 === 0 ? 12 : h % 12
+    return hour12 + ":" + (m < 10 ? "0" + m : m) + " " + suffix
+  }
+
+  function refreshSchedule() {
+    if (!scheduleReadProc.running) scheduleReadProc.running = true
+  }
+
+  function toggleSchedule() {
+    if (scheduleProc.running) return
+    scheduleProc.command = [root.scheduleScript(), "toggle"]
+    scheduleProc.running = true
+  }
+
+  function applyScheduleStatus(raw) {
+    try {
+      var status = JSON.parse(String(raw || "").trim())
+      root.scheduleEnabled = !!status.enabled
+      if (status.on) root.scheduleOn = String(status.on)
+      if (status.off) root.scheduleOff = String(status.off)
+    } catch (e) {
+      // leave the last known state alone
+    }
+  }
+
+  // ---- Extra dim ----
+  // Software-dims every display below its hardware minimum through
+  // hyprsunset's gamma control. 0 = normal, 80 = darkest we allow. The value
+  // persists in ~/.local/state/omarchy/extra-dim via extra-dim.sh, which also
+  // restores it on shell start. Gamma and night light temperature coexist.
+  property int dimPercent: 0
+  property int pendingDimPercent: 0
+  property int lastDimPercent: 50
+  property bool dimApplyQueued: false
+
+  function extraDimScript() {
+    return Quickshell.env("HOME") + "/.config/omarchy/plugins/toby.monitor/extra-dim.sh"
+  }
+
+  function clampDim(value) {
+    return Math.max(0, Math.min(80, Math.round(Number(value))))
+  }
+
+  function previewDim(value) {
+    root.dimPercent = root.clampDim(value)
+    dimDebounce.restart()
+  }
+
+  function setDim(value) {
+    dimDebounce.stop()
+    var dim = root.clampDim(value)
+    root.dimPercent = dim
+    root.pendingDimPercent = dim
+    if (dim > 0) root.lastDimPercent = dim
+
+    if (dimApplyProc.running) {
+      root.dimApplyQueued = true
+      return
+    }
+
+    root.dimApplyQueued = false
+    dimApplyProc.command = [root.extraDimScript(), "set", String(dim)]
+    dimApplyProc.running = true
+  }
+
+  function toggleDim() {
+    root.setDim(root.dimPercent > 0 ? 0 : root.lastDimPercent)
+  }
+
+  function adjustDim(delta) {
+    if (focusSection !== "extradim") return
+    root.setDim(root.dimPercent + delta)
+  }
+
+  function refreshDim() {
+    if (!dimReadProc.running) dimReadProc.running = true
+  }
+
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
 
@@ -132,6 +228,8 @@ Panel {
     if (brightnessAvailable) list.push("brightness")
     list.push("nightlight")
     list.push("nightlightstrength")
+    list.push("schedule")
+    list.push("extradim")
     list.push("textsize")
     list.push("scale")
     if (displays.length > 1) list.push("monitors")
@@ -142,6 +240,8 @@ Panel {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     if (section === "nightlight") return 0  // single toggle row, like brightness
     if (section === "nightlightstrength") return 0  // slider sentinel at -1, like brightness
+    if (section === "schedule") return 0    // single toggle row, like nightlight
+    if (section === "extradim") return 0    // slider sentinel at -1, like brightness
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
@@ -149,12 +249,12 @@ Panel {
   }
 
   function sectionIsSingleRow(section) {
-    // brightness, night light (+ its strength slider), and text size are lone rows; scale presets sit horizontally.
-    return section === "brightness" || section === "nightlight" || section === "nightlightstrength" || section === "textsize" || section === "scale"
+    // brightness, night light (+ strength, schedule), extra dim and text size are lone rows; scale presets sit horizontally.
+    return section === "brightness" || section === "nightlight" || section === "nightlightstrength" || section === "schedule" || section === "extradim" || section === "textsize" || section === "scale"
   }
 
   function sectionFirstIndex(section) {
-    if (section === "brightness" || section === "nightlight" || section === "nightlightstrength" || section === "textsize") return -1
+    if (section === "brightness" || section === "nightlight" || section === "nightlightstrength" || section === "schedule" || section === "extradim" || section === "textsize") return -1
     return 0
   }
 
@@ -210,6 +310,14 @@ Panel {
       toggleNightlight()
       return
     }
+    if (focusSection === "schedule") {
+      toggleSchedule()
+      return
+    }
+    if (focusSection === "extradim") {
+      toggleDim()
+      return
+    }
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
@@ -232,7 +340,7 @@ Panel {
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
       // brightness/night light/text size use the -1 sentinel; scale clamps into the presets.
-      if (focusSection === "brightness" || focusSection === "nightlight" || focusSection === "nightlightstrength" || focusSection === "textsize") selectedIndex = -1
+      if (focusSection === "brightness" || focusSection === "nightlight" || focusSection === "nightlightstrength" || focusSection === "schedule" || focusSection === "extradim" || focusSection === "textsize") selectedIndex = -1
       else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
       return
     }
@@ -412,7 +520,13 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    refreshDim()
+    refreshSchedule()
+    // Re-apply the saved extra dim: hyprsunset forgets gamma on restart.
+    dimRestoreProc.running = true
+  }
 
   // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
   // with j/k ready to navigate. Keep a default landing point, but don't paint
@@ -420,6 +534,8 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh()
+      refreshDim()
+      refreshSchedule()
       if (brightnessAvailable) {
         focusSection = "brightness"
         selectedIndex = -1
@@ -505,6 +621,64 @@ Panel {
     onRunningChanged: if (!running) root.refresh()
   }
 
+  // ---- Extra dim processes ----
+  Timer {
+    id: dimDebounce
+    interval: 120
+    repeat: false
+    onTriggered: root.setDim(root.dimPercent)
+  }
+
+  Process {
+    id: dimReadProc
+    command: [root.extraDimScript(), "get"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var value = parseInt(String(text).trim(), 10)
+        if (!isNaN(value)) {
+          root.dimPercent = root.clampDim(value)
+          if (root.dimPercent > 0) root.lastDimPercent = root.dimPercent
+        }
+      }
+    }
+  }
+
+  Process {
+    id: dimRestoreProc
+    command: [root.extraDimScript(), "restore"]
+    stdout: StdioCollector { waitForEnd: true }
+  }
+
+  Process {
+    id: dimApplyProc
+    stdout: StdioCollector { waitForEnd: true }
+    // Like brightness: the value we just wrote is authoritative, so don't
+    // re-read; just flush any change queued while this one was in flight.
+    onRunningChanged: {
+      if (running) return
+      if (root.dimApplyQueued) root.setDim(root.pendingDimPercent)
+    }
+  }
+
+  // ---- Night light schedule processes ----
+  Process {
+    id: scheduleReadProc
+    command: [root.scheduleScript(), "status"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyScheduleStatus(text)
+    }
+  }
+
+  Process {
+    id: scheduleProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyScheduleStatus(text)
+    }
+  }
+
   // Applies text size via the CLI, which rewrites the shell override file;
   // Style picks the new base-size up through its own file watch, so there's
   // nothing to refresh here.
@@ -540,7 +714,12 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: Quickshell.screens.length > 1 ? "󰍺" : "󰍹"
-    onPressed: function(b) { root.toggle() }
+    tooltipText: root.dimPercent > 0 ? "Display · extra dim " + root.dimPercent + "%" : "Display"
+    // Right-click toggles extra dim, as the old standalone widget did.
+    onPressed: function(b) {
+      if (b === Qt.RightButton) root.toggleDim()
+      else root.toggle()
+    }
     onWheelMoved: function(delta) {
       if (!root.brightnessAvailable) return
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
@@ -570,6 +749,7 @@ Panel {
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
           else if (root.focusSection === "nightlightstrength") root.adjustNightlightStrength(dx * 5)
+          else if (root.focusSection === "extradim") root.adjustDim(dx * 5)
           else if (root.focusSection === "textsize") root.adjustTextSize(dx)
           else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
@@ -860,6 +1040,167 @@ Panel {
                   root.selectedIndex = -1
                 }
               }
+            }
+
+            // Schedule row: toggles the systemd user timer that switches the
+            // night light on/off at the times shown.
+            CursorSurface {
+              id: scheduleRow
+              width: parent.width
+              height: scheduleInner.implicitHeight + Style.spacing.xl
+              hasCursor: root.cursorActive && root.focusSection === "schedule" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(scheduleRow)
+              current: root.scheduleEnabled
+              foreground: root.bar.foreground
+              fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
+              currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
+
+              Row {
+                id: scheduleInner
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                spacing: Style.space(8)
+
+                Text {
+                  text: "󰅐"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.title
+                  width: Style.space(22)
+                  horizontalAlignment: Text.AlignHCenter
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Column {
+                  width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(1)
+
+                  Text {
+                    text: "Schedule"
+                    color: root.bar.foreground
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.body
+                    elide: Text.ElideRight
+                    width: parent.width
+                  }
+
+                  Text {
+                    text: "On at " + root.formatClock(root.scheduleOn) + ", off at " + root.formatClock(root.scheduleOff)
+                    color: Qt.darker(root.bar.foreground, 1.4)
+                    font.family: root.bar.fontFamily
+                    font.pixelSize: Style.font.caption
+                    elide: Text.ElideRight
+                    width: parent.width
+                  }
+                }
+
+                Text {
+                  text: root.scheduleEnabled ? "󰄬" : ""
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.subtitle
+                  width: Style.space(14)
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "schedule"
+                  root.selectedIndex = -1
+                }
+                onClicked: root.toggleSchedule()
+              }
+            }
+          }
+
+          // ---------- Extra dim ----------
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(extraDimHeader.implicitHeight, extraDimPercent.implicitHeight)
+
+              PanelSectionHeader {
+                id: extraDimHeader
+                text: "EXTRA DIM"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: extraDimPercent
+                text: {
+                  var v = Math.round(extraDimSlider.dragging ? extraDimSlider.liveValue : root.dimPercent)
+                  return v > 0 ? v + "%" : "Off"
+                }
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            CursorSurface {
+              id: extraDimRow
+              width: parent.width
+              height: extraDimSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "extradim" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(extraDimRow)
+              foreground: root.bar.foreground
+              outline: true
+
+              PanelSlider {
+                id: extraDimSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 0
+                maximum: 80
+                step: 1
+                value: root.dimPercent
+                integer: true
+                onMoved: function(v) { root.previewDim(v) }
+                onReleased: function(v) { root.setDim(v) }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "extradim"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            Text {
+              width: parent.width
+              text: "Darkens every display below its hardware minimum. Right-click the bar icon to toggle."
+              color: Qt.darker(root.bar.foreground, 1.45)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
             }
           }
 

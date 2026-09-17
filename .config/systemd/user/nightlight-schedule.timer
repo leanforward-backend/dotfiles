@@ -1,0 +1,13 @@
+[Unit]
+Description=Turn night light on at 20:30 and off at 07:00
+
+[Timer]
+# Keep these in step with ON_TIME / OFF_TIME in nightlight-schedule.sh.
+OnCalendar=*-*-* 20:30:00
+OnCalendar=*-*-* 07:00:00
+# If the machine was off when a boundary passed, run once at next login;
+# `apply` picks the right state for the current time, so this is safe.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
