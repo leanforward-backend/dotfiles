@@ -537,7 +537,7 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(480))
+    contentWidth: panel.fittedContentWidth(Style.space(600))
     contentHeight: panel.fittedContentHeight(weatherColumn.implicitHeight)
 
     PanelKeyCatcher {
@@ -997,8 +997,7 @@ Panel {
         opacity: 0.12
       }
 
-      // ---- Forecast row: each cell has the day icon left of a day-name + hi/lo column.
-      //      Wrapped in an Item so the block of cells can be centered within the popup.
+      // Keep forecast cells inside the viewport; long details wrap within each day.
       Item {
         visible: root.forecastDays.length > 0
         width: parent.width
@@ -1006,18 +1005,21 @@ Panel {
 
         Row {
           id: forecastRow
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(28)
+          width: parent.width
+          spacing: Style.space(16)
 
           Repeater {
             model: root.forecastDays
 
             Row {
+              id: forecastCell
               required property var modelData
               required property int index
+              width: (forecastRow.width - forecastRow.spacing * (root.forecastDays.length - 1)) / Math.max(1, root.forecastDays.length)
               spacing: Style.space(10)
 
               Text {
+                id: forecastIcon
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.dayIcon(modelData)
                 color: root.bar.foreground
@@ -1026,10 +1028,13 @@ Panel {
               }
 
               Column {
+                width: Math.max(1, forecastCell.width - forecastIcon.width - forecastCell.spacing)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(2)
 
                 Text {
+                  width: parent.width
+                  wrapMode: Text.Wrap
                   text: root.dayName(modelData.date).toUpperCase()
                   color: Qt.darker(root.bar.foreground, 1.4)
                   font.family: root.bar.fontFamily
@@ -1055,6 +1060,8 @@ Panel {
                 }
 
                 Text {
+                  width: parent.width
+                  wrapMode: Text.Wrap
                   visible: modelData.precipitationProbability !== undefined && modelData.precipitationProbability !== ""
                   text: "Rain " + modelData.precipitationProbability + "%  ·  " + root.rainForDay(modelData)
                   color: Qt.darker(root.bar.foreground, 1.5)
@@ -1062,6 +1069,8 @@ Panel {
                   font.pixelSize: Style.font.caption
                 }
                 Text {
+                  width: parent.width
+                  wrapMode: Text.Wrap
                   visible: modelData.uvIndex !== undefined && modelData.uvIndex !== ""
                   text: "UV " + modelData.uvIndex + "  ·  Wind " + root.windForDay(modelData)
                   color: Qt.darker(root.bar.foreground, 1.5)
