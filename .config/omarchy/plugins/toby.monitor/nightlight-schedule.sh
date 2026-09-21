@@ -36,28 +36,85 @@ ensure_session_env() {
   export PATH="$OMARCHY_PATH/bin:$PATH"
 }
 
+# omarchy treats anything below IDENTITY_TEMP as "night light on"; matching it
+# keeps this script, the bar indicator and `omarchy toggle nightlight` agreed.
+IDENTITY_TEMP=6000
+NIGHT_TEMP=4000
+DAY_TEMP=6500
+
+helper() {
+  "$(dirname "$(readlink -f "$0")")/hyprsunset-ready.sh"
+}
+
+# Read the temperature from hyprsunset itself. The shell caches its own idea of
+# the state, and that cache is wrong for as long as it takes to notice a
+# hyprsunset restart, which is exactly when this script runs at login.
+current_temp() {
+  hyprctl hyprsunset temperature 2>/dev/null | grep -oE '[0-9]+' | head -n1
+}
+
 set_nightlight() {
   local want="$1"  # enable | disable
   ensure_session_env
-  # Already in the wanted state? Leave it alone so a manually chosen
-  # strength (temperature) survives the 20:30 tick.
+
+  # Shared with extra-dim.sh: takes a lock, proves the socket answers, and
+  # repairs a dead one. Never start hyprsunset from here directly.
+  if ! helper; then
+    printf 'nightlight: hyprsunset is not reachable\n' >&2
+    return 1
+  fi
+
+  local target=$DAY_TEMP
+  [[ "$want" == "enable" ]] && target=$NIGHT_TEMP
+
+  # Already in the wanted state? Leave it alone, so a manually chosen strength
+  # survives the 20:30 tick.
   local current
-  current=$(omarchy-shell nightlight status 2>/dev/null || true)
-  case "$want:$current" in
-    enable:*'"enabled":true'*|disable:*'"enabled":false'*) return 0 ;;
-  esac
-  # Prefer the shell service so the bar indicator and panel update at once.
-  if omarchy-shell nightlight "$want" >/dev/null 2>&1; then
-    return 0
+  current=$(current_temp)
+  if [[ -n "$current" ]]; then
+    if [[ "$want" == "enable" && "$current" -lt "$IDENTITY_TEMP" ]]; then return 0; fi
+    if [[ "$want" == "disable" && "$current" -ge "$IDENTITY_TEMP" ]]; then return 0; fi
   fi
-  # Shell not running: drive hyprsunset directly with the same temperatures.
-  local temp=6500
-  [[ "$want" == "enable" ]] && temp=4000
-  if ! pgrep -x hyprsunset >/dev/null; then
-    setsid uwsm-app -- hyprsunset >/dev/null 2>&1 &
+
+  # Prefer the shell so the bar indicator and panel update at once.
+  omarchy-shell nightlight "$want" >/dev/null 2>&1
+
+  # Then confirm against hyprsunset and resend if it did not land. A freshly
+  # started hyprsunset applies its own default at the end of its boot, which
+  # clobbers anything set before then.
+  local i
+  for ((i = 0; i < 10; i++)); do
+    current=$(current_temp)
+    if [[ -n "$current" ]]; then
+      if [[ "$want" == "enable" && "$current" -lt "$IDENTITY_TEMP" ]]; then break; fi
+      if [[ "$want" == "disable" && "$current" -ge "$IDENTITY_TEMP" ]]; then break; fi
+    fi
+    hyprctl hyprsunset temperature "$target" >/dev/null 2>&1
+    sleep 0.2
+  done
+
+  # Let the bar catch up with whatever we just did directly.
+  omarchy-shell -q nightlight refresh >/dev/null 2>&1
+
+  current=$(current_temp)
+  [[ -n "$current" ]] || return 1
+  if [[ "$want" == "enable" ]]; then
+    [[ "$current" -lt "$IDENTITY_TEMP" ]]
+  else
+    [[ "$current" -ge "$IDENTITY_TEMP" ]]
+  fi
+}
+
+# The catch-up run fires the moment the timer starts at login, which can be
+# seconds before the shell is answering IPC. Waiting for it keeps us off the
+# fallback path, and off a hyprsunset launch that races the shell's own.
+wait_for_shell() {
+  local deadline=$((SECONDS + ${1:-90}))
+  while ((SECONDS < deadline)); do
+    omarchy-shell nightlight status >/dev/null 2>&1 && return 0
     sleep 1
-  fi
-  hyprctl hyprsunset temperature "$temp" >/dev/null 2>&1
+  done
+  return 1
 }
 
 enabled() {
@@ -87,6 +144,8 @@ case "$action" in
     if enabled; then "$0" disable; else "$0" enable; fi
     ;;
   apply)
+    ensure_session_env
+    wait_for_shell 90 || true
     if in_night_window "$(date +%H:%M)"; then
       set_nightlight enable
     else

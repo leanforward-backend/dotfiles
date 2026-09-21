@@ -24,12 +24,11 @@ apply_dim() {
   local dim="$1"
   local gamma=$((100 - dim))
 
-  if ! pgrep -x hyprsunset >/dev/null; then
-    setsid uwsm-app -- hyprsunset >/dev/null 2>&1 &
-    for _ in {1..20}; do
-      [[ -S "${XDG_RUNTIME_DIR:-/run/user/$UID}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/.hyprsunset.sock" ]] && break
-      sleep 0.05
-    done
+  # Shared with nightlight-schedule.sh: takes a lock, proves the socket answers,
+  # and repairs a dead one. Never start hyprsunset from here directly.
+  if ! "$(dirname "$(readlink -f "$0")")/hyprsunset-ready.sh"; then
+    printf 'extra-dim: hyprsunset is not reachable\n' >&2
+    return 1
   fi
 
   if hyprctl hyprsunset gamma "$gamma" >/dev/null; then

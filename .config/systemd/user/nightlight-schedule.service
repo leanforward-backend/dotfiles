@@ -4,4 +4,7 @@ After=graphical-session.target
 
 [Service]
 Type=oneshot
+# The catch-up run at login waits for the shell to answer IPC before doing
+# anything, so allow more than the default start timeout for that wait.
+TimeoutStartSec=180
 ExecStart=%h/.config/omarchy/plugins/toby.monitor/nightlight-schedule.sh apply
