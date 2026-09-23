@@ -230,9 +230,9 @@ Panel {
     list.push("nightlightstrength")
     list.push("schedule")
     list.push("extradim")
-    list.push("textsize")
-    list.push("scale")
     if (displays.length > 1) list.push("monitors")
+    list.push("scale")
+    list.push("textsize")
     return list
   }
 
@@ -243,7 +243,7 @@ Panel {
     if (section === "schedule") return 0    // single toggle row, like nightlight
     if (section === "extradim") return 0    // slider sentinel at -1, like brightness
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
-    if (section === "scale") return scaleValues.length
+    if (section === "scale") return scaleValues ? scaleValues.length : 0
     if (section === "monitors") return displays.length
     return 0
   }
@@ -1204,73 +1204,33 @@ Panel {
             }
           }
 
-          // ---------- Text size ----------
+          // ---------- Monitors ----------
           PanelSeparator {
+            visible: root.displays.length > 1
             foreground: root.bar.foreground
           }
 
           Column {
             width: parent.width
-            spacing: Style.space(6)
+            spacing: Style.space(10)
+            visible: root.displays.length > 1
 
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(textSizeHeader.implicitHeight, textSizePx.implicitHeight)
-
-              PanelSectionHeader {
-                id: textSizeHeader
-                text: "TEXT SIZE"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: textSizePx
-                text: (textSizeSlider.dragging
-                       ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
-                       : root.displayedTextPx()) + "px"
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-              }
+            PanelSectionHeader {
+              text: "DISPLAYS"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
             }
 
-            CursorSurface {
-              id: textSizeRow
-              width: parent.width
-              height: textSizeSlider.implicitHeight + Style.spacing.controlGap
-              hasCursor: root.cursorActive && root.focusSection === "textsize" && root.selectedIndex === -1
-              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(textSizeRow)
-              foreground: root.bar.foreground
-              outline: true
+            Repeater {
+              model: root.displays
 
-              PanelSlider {
-                id: textSizeSlider
-                bar: root.bar
-                anchors.fill: parent
-                anchors.leftMargin: Style.space(6)
-                anchors.rightMargin: Style.space(6)
-                minimum: 0
-                maximum: root.textSizeStops.length - 1
-                step: 1
-                integer: true
-                tickCount: root.textSizeStops.length
-                value: root.currentTextIndex()
-                onReleased: function(v) { root.setTextSize(root.textSizeStops[Math.round(v)]) }
-              }
+              MonitorRow {
+                required property var modelData
+                required property int index
 
-              HoverHandler {
-                onHoveredChanged: if (hovered && !root.reflowingText) {
-                  root.cursorActive = true
-                  root.focusSection = "textsize"
-                  root.selectedIndex = -1
-                }
+                width: panelColumn.width
+                display: modelData
+                rowIndex: index
               }
             }
           }
@@ -1339,33 +1299,73 @@ Panel {
             }
           }
 
-          // ---------- Monitors ----------
+          // ---------- Text size ----------
           PanelSeparator {
-            visible: root.displays.length > 1
             foreground: root.bar.foreground
           }
 
           Column {
             width: parent.width
-            spacing: Style.space(10)
-            visible: root.displays.length > 1
+            spacing: Style.space(6)
 
-            PanelSectionHeader {
-              text: "DISPLAYS"
-              foreground: root.bar.foreground
-              fontFamily: root.bar.fontFamily
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(textSizeHeader.implicitHeight, textSizePx.implicitHeight)
+
+              PanelSectionHeader {
+                id: textSizeHeader
+                text: "TEXT SIZE"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: textSizePx
+                text: (textSizeSlider.dragging
+                       ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
+                       : root.displayedTextPx()) + "px"
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
             }
 
-            Repeater {
-              model: root.displays
+            CursorSurface {
+              id: textSizeRow
+              width: parent.width
+              height: textSizeSlider.implicitHeight + Style.spacing.controlGap
+              hasCursor: root.cursorActive && root.focusSection === "textsize" && root.selectedIndex === -1
+              onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(textSizeRow)
+              foreground: root.bar.foreground
+              outline: true
 
-              MonitorRow {
-                required property var modelData
-                required property int index
+              PanelSlider {
+                id: textSizeSlider
+                bar: root.bar
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(6)
+                anchors.rightMargin: Style.space(6)
+                minimum: 0
+                maximum: root.textSizeStops.length - 1
+                step: 1
+                integer: true
+                tickCount: root.textSizeStops.length
+                value: root.currentTextIndex()
+                onReleased: function(v) { root.setTextSize(root.textSizeStops[Math.round(v)]) }
+              }
 
-                width: panelColumn.width
-                display: modelData
-                rowIndex: index
+              HoverHandler {
+                onHoveredChanged: if (hovered && !root.reflowingText) {
+                  root.cursorActive = true
+                  root.focusSection = "textsize"
+                  root.selectedIndex = -1
+                }
               }
             }
           }
