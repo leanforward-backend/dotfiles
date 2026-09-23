@@ -18,16 +18,6 @@ dotfiles() {
   git --git-dir="$HOME/.dotfiles.git" --work-tree="$HOME" "$@"
 }
 
-# foot passes Ctrl+V through raw (so Claude Code can paste images); make it
-# paste clipboard text at the cursor here instead of readline's quoted-insert.
-_paste_clipboard() {
-  local clip
-  clip=$(wl-paste --no-newline --type text 2>/dev/null) || return
-  READLINE_LINE="${READLINE_LINE:0:READLINE_POINT}${clip}${READLINE_LINE:READLINE_POINT}"
-  READLINE_POINT=$((READLINE_POINT + ${#clip}))
-}
-bind -x '"\C-v": _paste_clipboard'
-
 
 # Added by Antigravity CLI installer
 export PATH="$HOME/.local/bin:$PATH"

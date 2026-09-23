@@ -1,0 +1,22 @@
+#!/bin/bash
+# Ctrl+V in a terminal window (bound in ~/.config/hypr/bindings.lua).
+#
+# Text on the clipboard -> Shift+Insert, the terminal's own paste, so Ctrl+V
+# pastes text in every program (shell, nvim, ssh, REPLs).
+# No text (e.g. a screenshot) -> a raw Ctrl+V, so apps that read clipboard
+# images themselves, like Claude Code, can attach it.
+
+if wl-paste --list-types 2>/dev/null | grep -qxE 'text/plain.*|UTF8_STRING|STRING|TEXT'; then
+  mods=SHIFT key=Insert
+else
+  mods=CTRL key=V
+fi
+
+# Down/up split, as in Omarchy's universal paste: send_shortcut can leave
+# synthetic key state stuck. Synthetic keys don't re-trigger Hyprland binds.
+send() {
+  hyprctl eval "hl.dispatch(hl.dsp.send_key_state({ mods = \"$mods\", key = \"$key\", state = \"$1\" }))" >/dev/null
+}
+send down
+sleep 0.05
+send up

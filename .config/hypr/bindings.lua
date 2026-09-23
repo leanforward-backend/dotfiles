@@ -36,6 +36,35 @@ o.bind("SUPER + SHIFT + ALT + S", "Move window out of scratchpad",
 hl.unbind("SUPER + SHIFT + S")
 o.bind("SUPER + SHIFT + S", "Screenshot", "omarchy-capture-screenshot")
 
+-- Ctrl+V pastes text and images. foot passes Ctrl+V through raw (foot's paste
+-- is text-only), so in terminals terminal-paste picks: text on the clipboard ->
+-- Shift+Insert (terminal paste), image only -> raw Ctrl+V for Claude Code.
+-- Other windows get Ctrl+V re-sent unchanged; synthetic keys skip binds.
+local function send_key_once(mods, key)
+  hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
+  hl.timer(function()
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up" }))
+  end, { timeout = 50, type = "oneshot" })
+end
+
+local function active_window_is_terminal()
+  local window = hl.get_active_window()
+  for _, tag in ipairs(window and window.tags or {}) do
+    if tag:gsub("%*$", "") == "terminal" then
+      return true
+    end
+  end
+  return false
+end
+
+o.bind("CTRL + V", "Paste", function()
+  if active_window_is_terminal() then
+    hl.exec_cmd(os.getenv("HOME") .. "/.local/bin/terminal-paste")
+  else
+    send_key_once("CTRL", "V")
+  end
+end)
+
 -- Volume keys step by 2% instead of the default 5%.
 hl.unbind("XF86AudioRaiseVolume")
 hl.unbind("XF86AudioLowerVolume")
