@@ -30,3 +30,6 @@ export PATH="$HOME/.grok/bin:$PATH"
 # >>> Codex installer >>>
 export PATH="$HOME/.local/bin:$PATH"
 # <<< Codex installer <<<
+
+# .NET global tools (dotnet-ef)
+export PATH="$PATH:$HOME/.dotnet/tools"

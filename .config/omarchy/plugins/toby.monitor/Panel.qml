@@ -36,8 +36,8 @@ Panel {
 
   // Night light "strength" is really just the raw hyprsunset color
   // temperature, remapped to a 0-100 dial: 0% = day temperature (off),
-  // 100% = the warmest temperature we allow. Dragging past 0 flips the
-  // service's own enabled/disabled flag for free, since that's derived
+  // 100% = the warmest temperature we allow. Dragging to 0 turns the
+  // service's enabled flag off once it refreshes, since that's derived
   // from the temperature being below its identity threshold.
   //
   // Since omarchy 4.0.4 plugins only get a narrow proxy of the nightlight
@@ -65,6 +65,23 @@ Panel {
   function nightlightPercentToTemp(pct) {
     var clamped = Math.max(0, Math.min(100, pct))
     return Math.round(root.nightlightMaxTemp - (clamped / 100) * (root.nightlightMaxTemp - root.nightlightMinTemp))
+  }
+
+  // Since omarchy 4.0.4 plugins only get a narrow proxy of the nightlight
+  // service: `enabled` and setNightlight(), no `temperature` and no
+  // applyTemperature(). So the plugin reads and writes the hyprsunset
+  // temperature itself, then asks the service to refresh so the bar
+  // indicator and `enabled` follow.
+  property var nightlightTemperature: null
+  property bool nightlightApplyQueued: false
+  property int pendingNightlightTemperature: 0
+
+  // Toggling goes through the service; re-read the temperature once its
+  // enabled flag flips so the slider lands on the new value.
+  onNightlightEnabledChanged: nightlightReadDelay.restart()
+
+  function refreshNightlightTemperature() {
+    if (!nightlightReadProc.running) nightlightReadProc.running = true
   }
 
   function currentNightlightStrength() {
@@ -103,6 +120,23 @@ Panel {
       "nightlight-strength",
       Quickshell.env("HOME") + "/.config/omarchy/plugins/toby.monitor/hyprsunset-ready.sh",
       String(temp)]
+    var temp = root.nightlightPercentToTemp(pct)
+    root.nightlightTemperature = temp
+    root.nightlightStrengthPreview = -1
+
+    if (nightlightApplyProc.running) {
+      root.pendingNightlightTemperature = temp
+      root.nightlightApplyQueued = true
+      return
+    }
+    root.runNightlightApply(temp)
+  }
+
+  function runNightlightApply(temp) {
+    root.nightlightApplyQueued = false
+    nightlightApplyProc.command = ["bash", "-c",
+      "\"$1\" && hyprctl hyprsunset temperature \"$2\" >/dev/null; omarchy-shell -q nightlight refresh",
+      "_", Quickshell.env("HOME") + "/.config/omarchy/plugins/toby.monitor/hyprsunset-ready.sh", String(temp)]
     nightlightApplyProc.running = true
   }
 
@@ -554,6 +588,7 @@ Panel {
     refreshDim()
     refreshSchedule()
     refreshNightlightTemp()
+    refreshNightlightTemperature()
     // Re-apply the saved extra dim: hyprsunset forgets gamma on restart.
     dimRestoreProc.running = true
   }
@@ -567,6 +602,7 @@ Panel {
       refreshDim()
       refreshSchedule()
       refreshNightlightTemp()
+      refreshNightlightTemperature()
       if (brightnessAvailable) {
         focusSection = "brightness"
         selectedIndex = -1
@@ -640,6 +676,36 @@ Panel {
     interval: 180
     repeat: false
     onTriggered: root.setNightlightStrength(root.nightlightStrengthPreview)
+  }
+
+  Timer {
+    id: nightlightReadDelay
+    interval: 400
+    repeat: false
+    onTriggered: root.refreshNightlightTemperature()
+  }
+
+  Process {
+    id: nightlightReadProc
+    command: ["hyprctl", "hyprsunset", "temperature"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        // Don't clobber a value we just set while its apply is in flight.
+        if (nightlightApplyProc.running || root.nightlightStrengthPreview >= 0) return
+        var match = String(text).match(/\d+/)
+        root.nightlightTemperature = match ? Number(match[0]) : null
+      }
+    }
+  }
+
+  Process {
+    id: nightlightApplyProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      if (root.nightlightApplyQueued) root.runNightlightApply(root.pendingNightlightTemperature)
+    }
   }
 
   Process {
