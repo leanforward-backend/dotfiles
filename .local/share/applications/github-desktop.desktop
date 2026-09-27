@@ -1,0 +1,16 @@
+# Local override of the github-desktop-bin package's desktop entry.
+# --use-angle=opengles avoids a SIGABRT in Mesa's dri_create_fence_fd
+# (EGL_CreateSyncKHR) that crashes the GPU process 3x on startup, costing
+# ~56s before Chromium falls back to SwiftShader. Electron ships Chromium
+# 128 here, which predates current Mesa. Remove once upstream bumps Electron.
+[Desktop Entry]
+Name=GitHub Desktop
+Comment=Extend your GitHub workflow beyond your browser with GitHub Desktop
+Comment[es]=Trabaja con GitHub desde tu escritorio.
+Comment[eu]=GitHub-ekin lan egin zure ordenagailutik.
+Exec=/usr/bin/github-desktop --use-angle=opengles %U
+Terminal=false
+Type=Application
+Icon=github-desktop
+Categories=Development;
+MimeType=x-scheme-handler/x-github-client;x-scheme-handler/x-github-desktop-auth;x-scheme-handler/x-github-desktop-dev-auth;
