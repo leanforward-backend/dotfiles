@@ -28,5 +28,12 @@ require("default.hypr.toggles")
 -- Add any other personal Hyprland configuration below.
 -- o.window("qemu", { workspace = "5" })
 
+-- Hybrid Intel+NVIDIA: Omarchy points VA-API at the NVIDIA driver, but browsers
+-- render on the Intel iGPU and can't import NVIDIA-decoded frames (video plays
+-- audio only). Decode on the Intel iGPU instead when it's present.
+if io.open("/dev/dri/by-path/pci-0000:00:02.0-render") then
+  hl.env("LIBVA_DRIVER_NAME", "iHD")
+end
+
 -- Disable Omarchy's default window opacity (make all windows fully opaque).
 o.window(".*", { tag = "-default-opacity", opacity = "1 1" })

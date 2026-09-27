@@ -39,6 +39,15 @@ Panel {
   // 100% = the warmest temperature we allow. Dragging past 0 flips the
   // service's own enabled/disabled flag for free, since that's derived
   // from the temperature being below its identity threshold.
+  //
+  // Since omarchy 4.0.4 plugins only get a narrow proxy of the nightlight
+  // service (enabled + setNightlight), with no temperature or
+  // applyTemperature. So the panel reads and writes the temperature through
+  // hyprctl itself, then pokes the service's IPC refresh so the bar indicator
+  // follows.
+  property var nightlightTemperature: null
+  property int pendingNightlightTemp: 0
+  property bool nightlightApplyQueued: false
   readonly property real nightlightMaxTemp: 6500
   // hyprsunset's actual floor (hyprctl reports "range 1000-20000").
   readonly property real nightlightMinTemp: 1000
@@ -60,7 +69,11 @@ Panel {
 
   function currentNightlightStrength() {
     if (root.nightlightStrengthPreview >= 0) return root.nightlightStrengthPreview
-    return root.nightlightTempToPercent(root.nightlightService ? root.nightlightService.temperature : null)
+    return root.nightlightTempToPercent(root.nightlightTemperature)
+  }
+
+  function refreshNightlightTemp() {
+    if (!nightlightApplyProc.running && !nightlightTempProc.running) nightlightTempProc.running = true
   }
 
   function previewNightlightStrength(pct) {
@@ -70,11 +83,27 @@ Panel {
 
   function setNightlightStrength(pct) {
     nightlightStrengthDebounce.stop()
-    // applyTemperature() writes the service's temperature synchronously
-    // (only the underlying hyprctl call is async), so the real value is
-    // already correct the moment this returns — no round-trip to wait on.
-    if (root.nightlightService) root.nightlightService.applyTemperature(root.nightlightPercentToTemp(pct))
+    // Like extra dim: the value we write is authoritative locally, so the
+    // slider never waits on (or bounces during) the hyprctl round-trip.
+    var temp = root.nightlightPercentToTemp(pct)
+    root.nightlightTemperature = temp
+    root.pendingNightlightTemp = temp
     root.nightlightStrengthPreview = -1
+
+    if (nightlightApplyProc.running) {
+      root.nightlightApplyQueued = true
+      return
+    }
+
+    root.nightlightApplyQueued = false
+    // hyprsunset-ready.sh starts hyprsunset if needed (under the shared lock)
+    // and proves the socket answers before we talk to it.
+    nightlightApplyProc.command = ["bash", "-c",
+      '"$1" && hyprctl hyprsunset temperature "$2" >/dev/null; omarchy-shell -q nightlight refresh >/dev/null 2>&1',
+      "nightlight-strength",
+      Quickshell.env("HOME") + "/.config/omarchy/plugins/toby.monitor/hyprsunset-ready.sh",
+      String(temp)]
+    nightlightApplyProc.running = true
   }
 
   function adjustNightlightStrength(delta) {
@@ -524,6 +553,7 @@ Panel {
     refresh()
     refreshDim()
     refreshSchedule()
+    refreshNightlightTemp()
     // Re-apply the saved extra dim: hyprsunset forgets gamma on restart.
     dimRestoreProc.running = true
   }
@@ -536,6 +566,7 @@ Panel {
       refresh()
       refreshDim()
       refreshSchedule()
+      refreshNightlightTemp()
       if (brightnessAvailable) {
         focusSection = "brightness"
         selectedIndex = -1
@@ -559,7 +590,21 @@ Panel {
     interval: 5000
     running: root.opened
     repeat: true
-    onTriggered: root.refresh()
+    onTriggered: {
+      root.refresh()
+      root.refreshNightlightTemp()
+    }
+  }
+
+  // The on/off toggle, schedule and keybinding change the temperature behind
+  // our back (4000 / 6500); re-read once the service's hyprctl call has landed.
+  onNightlightEnabledChanged: nightlightTempResync.restart()
+
+  Timer {
+    id: nightlightTempResync
+    interval: 600
+    repeat: false
+    onTriggered: root.refreshNightlightTemp()
   }
 
   Process {
@@ -595,6 +640,31 @@ Panel {
     interval: 180
     repeat: false
     onTriggered: root.setNightlightStrength(root.nightlightStrengthPreview)
+  }
+
+  Process {
+    id: nightlightTempProc
+    command: ["hyprctl", "hyprsunset", "temperature"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var match = String(text).match(/[0-9]+/)
+        root.nightlightTemperature = match ? Number(match[0]) : null
+      }
+    }
+    // hyprctl exits 3 when hyprsunset isn't running: that's "off", i.e. 0%.
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.nightlightTemperature = null
+    }
+  }
+
+  Process {
+    id: nightlightApplyProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      if (root.nightlightApplyQueued) root.setNightlightStrength(root.nightlightTempToPercent(root.pendingNightlightTemp))
+    }
   }
 
   Process {
