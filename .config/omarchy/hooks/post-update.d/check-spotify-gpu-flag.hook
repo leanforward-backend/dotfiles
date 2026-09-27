@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Spotify video renders white on this hybrid Intel + NVIDIA laptop unless it
+# launches with --disable-gpu-compositing, which lives in spotify-flags.conf.
+# Warn if an update stopped the launcher reading that file, or the flag is gone.
+command -v spotify >/dev/null || exit 0
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/spotify-flags.conf"
+problem=""
+if ! grep -q 'spotify-flags.conf' /usr/bin/spotify 2>/dev/null; then
+  problem="/usr/bin/spotify no longer reads spotify-flags.conf."
+elif ! grep -qx -- '--disable-gpu-compositing' "$conf" 2>/dev/null; then
+  problem="--disable-gpu-compositing is missing from $conf."
+fi
+
+if [[ -n $problem ]]; then
+  omarchy-notification-send -u critical "Spotify video fix lost" "$problem"
+fi

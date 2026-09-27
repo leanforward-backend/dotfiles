@@ -25,9 +25,12 @@ case "$app" in
     # Written in place, NOT via a temp file and mv. This path is a symlink into
     # the dotfiles repo, and mv would replace the link with a regular file --
     # silently detaching the config from version control on every change.
+    # Only the scale line is replaced; every other flag is kept (notably
+    # --disable-gpu-compositing, without which video renders white).
+    others=""
+    [ -f "$conf" ] && others="$(grep -v -e '^--force-device-scale-factor=' "$conf")"
     {
-      echo "# Read by /usr/bin/spotify at launch (one flag per line, # for comments)."
-      echo "# The scale line is rewritten by the UI Scale bar widget."
+      [ -n "$others" ] && printf '%s\n' "$others"
       echo "--force-device-scale-factor=$scale"
     } > "$conf" || exit 1
 

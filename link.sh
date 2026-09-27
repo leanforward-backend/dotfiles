@@ -54,6 +54,14 @@ while IFS= read -r rel; do
   src="$REPO/$rel"
   dst="$HOME/$rel"
 
+  # Already the same file, reached through a symlinked parent directory (e.g.
+  # ~/.config/omarchy -> repo). Backing it up would move the repo's own file
+  # aside and leave a link pointing at itself.
+  if [ -e "$dst" ] && [ "$dst" -ef "$src" ]; then
+    already=$((already + 1))
+    continue
+  fi
+
   # Compare the link target itself, not the fully resolved path: repo files
   # may themselves be symlinks (the shared backgrounds are), and resolving
   # through them would make a correct link look wrong on every run.
