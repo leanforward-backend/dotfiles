@@ -28,6 +28,12 @@ Panel {
   // or "" for omarchy's default "whatever is playing" behaviour.
   property string pinned: ""
 
+  // Same naming as `pinned`, for the source that most recently started playing.
+  // It survives that source pausing, so the icon keeps pointing at the last
+  // thing you listened to. Not persisted: after a shell restart it is seeded
+  // from whatever is already playing.
+  property string lastPlayed: ""
+
   readonly property int seekSeconds: 15
 
   function scriptPath() {
@@ -59,18 +65,22 @@ Panel {
     return root.pinned !== "" && root.playerName(player) === root.pinned
   }
 
-  // What the bar glyph and its tooltip describe: the pinned source if it is
-  // still around, otherwise the first playing one, otherwise the first source.
+  // What the bar glyph, its tooltip and its middle click drive: the pinned
+  // source if it is still around, otherwise the most recently played one,
+  // otherwise the first playing one, otherwise the first source.
   function pickActive() {
     var list = root.players
     var playing = null
+    var recent = null
     for (var i = 0; i < list.length; i++) {
       var p = list[i]
       if (!p) continue
-      if (root.pinned !== "" && root.playerName(p) === root.pinned) return p
+      var name = root.playerName(p)
+      if (root.pinned !== "" && name === root.pinned) return p
+      if (!recent && root.lastPlayed !== "" && name === root.lastPlayed) recent = p
       if (!playing && p.isPlaying) playing = p
     }
-    return playing || (list.length > 0 ? list[0] : null)
+    return recent || playing || (list.length > 0 ? list[0] : null)
   }
 
   // Seeking goes through the same script the media keys use: Chrome advertises
@@ -123,6 +133,30 @@ Panel {
   Process {
     id: pinProc
     stdout: StdioCollector { waitForEnd: true }
+  }
+
+  // Watches every source for the moment it starts playing.
+  Repeater {
+    model: root.players
+
+    Item {
+      id: tracker
+      required property var modelData
+      visible: false
+
+      Component.onCompleted: {
+        if (tracker.modelData && tracker.modelData.isPlaying && root.lastPlayed === "")
+          root.lastPlayed = root.playerName(tracker.modelData)
+      }
+
+      Connections {
+        target: tracker.modelData
+        function onIsPlayingChanged() {
+          if (tracker.modelData.isPlaying)
+            root.lastPlayed = root.playerName(tracker.modelData)
+        }
+      }
+    }
   }
 
   implicitWidth: button.implicitWidth
