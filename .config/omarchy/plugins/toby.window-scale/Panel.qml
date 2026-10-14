@@ -163,7 +163,7 @@ Panel {
           bar: root.bar
           width: parent.width
           minimum: 0.5
-          maximum: 1.25
+          maximum: 2.5
           step: 0.05
           value: root.spotifyScale
           enabled: !root.applying

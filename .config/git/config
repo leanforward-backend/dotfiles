@@ -29,6 +29,8 @@
 [user]
 	name = Toby Crust
 	email = leanforward.designs@gmail.com
+[include]
+	path = ~/.config/git/config.local  # Untracked per-machine overrides (e.g. user.email)
 [filter "lfs"]
 	process = git-lfs filter-process
 	required = true

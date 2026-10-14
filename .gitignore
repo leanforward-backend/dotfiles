@@ -1,2 +1,2 @@
-
-.config/git/config
+# Backups made by link.sh when it replaces a real file
+*.bak.*

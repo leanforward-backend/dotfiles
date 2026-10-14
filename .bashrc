@@ -13,12 +13,6 @@ source "$OMARCHY_PATH/default/bash/rc"
 # Make an alias for invoking commands you use constantly
 # alias p='python'
 
-# Dotfiles: bare git repo tracking select files in $HOME directly (no symlinks)
-dotfiles() {
-  git --git-dir="$HOME/.dotfiles.git" --work-tree="$HOME" "$@"
-}
-
-
 # Added by Antigravity CLI installer
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -33,3 +27,6 @@ export PATH="$HOME/.local/bin:$PATH"
 
 # .NET global tools (dotnet-ef)
 export PATH="$PATH:$HOME/.dotnet/tools"
+
+# opencode
+export PATH=/home/s/.opencode/bin:$PATH

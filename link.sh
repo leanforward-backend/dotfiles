@@ -46,7 +46,7 @@ backed_up=0
 while IFS= read -r rel; do
   # Repo-only files that have no business in $HOME.
   case "$rel" in
-    link.sh | .dotfiles.gitignore | README* | LICENSE*) continue ;;
+    link.sh | .gitignore | README* | LICENSE*) continue ;;
     .githooks/*) continue ;;
     *.bak.*) continue ;;
   esac
