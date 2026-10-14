@@ -4,19 +4,24 @@
 # The bar widget (toby.media) writes a player name -- the tail of an MPRIS bus
 # name, e.g. "spotify" or "chromium" -- to the pin file. While a pin is set and
 # that player is on the bus, the media keys drive it directly over D-Bus.
-# With no pin, or a pinned player that has gone away, everything falls through
-# to omarchy's own media service, which picks whatever is playing.
+# With no pin they drive the source that most recently started playing, which
+# the widget records in the recent file. Only when neither resolves does
+# everything fall through to omarchy's own media service, which picks whatever
+# is playing.
 #
 # Seeking is the exception: omarchy's media service exposes no seek over IPC,
-# so with nothing pinned the seek actions find the playing player themselves.
+# so with neither set the seek actions find the playing player themselves.
 
 set -u
 
 PIN_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/media-target"
+# Per login session on purpose: last session's player is no guide to this one.
+RECENT_FILE="${XDG_RUNTIME_DIR:-/tmp}/toby-media-recent"
 MPRIS_PREFIX="org.mpris.MediaPlayer2"
 action="${1:-play-pause}"
 
 read_pin() { [[ -f $PIN_FILE ]] && tr -d '[:space:]' <"$PIN_FILE"; }
+read_recent() { [[ -f $RECENT_FILE ]] && tr -d '[:space:]' <"$RECENT_FILE"; }
 
 # Bus names carry a per-process suffix for multi-instance players
 # (org.mpris.MediaPlayer2.chromium.instance81932), so match on the stem.
@@ -117,6 +122,15 @@ case "$action" in
     read_pin
     exit 0
     ;;
+  recent)
+    # With a player, record it; without one, print what is recorded.
+    if [[ -n ${2:-} ]]; then
+      printf '%s' "$2" >"$RECENT_FILE"
+    else
+      read_recent
+    fi
+    exit 0
+    ;;
   play-pause | next | previous)
     explicit_target="${2:-}"
     ;;
@@ -127,17 +141,20 @@ case "$action" in
   *)
     echo "usage: media-keys.sh [play-pause|next|previous] [player]" >&2
     echo "       media-keys.sh [forward|back] [seconds] [player]" >&2
-    echo "       media-keys.sh [pin <player>|unpin|target]" >&2
+    echo "       media-keys.sh [pin <player>|unpin|target|recent [player]]" >&2
     exit 1
     ;;
 esac
 
-# An explicit player (the bar widget's own row buttons) wins over the pin.
-target="$explicit_target"
-[[ -n $target ]] || target=$(read_pin)
-
+# An explicit player (the bar widget's own row buttons) wins over the pin, and
+# the pin wins over the most recent source. A pin whose player has gone away
+# falls through to the recent one rather than straight to omarchy.
 bus=""
-[[ -n $target ]] && bus=$(find_bus "$target")
+for target in "$explicit_target" "$(read_pin)" "$(read_recent)"; do
+  [[ -n $target ]] || continue
+  bus=$(find_bus "$target") && [[ -n $bus ]] && break
+done
+[[ -n $bus ]] || target=""
 
 if [[ -z $bus ]]; then
   # Seek has no service-side fallback to hand off to, so resolve a target here.

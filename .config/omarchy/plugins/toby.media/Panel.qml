@@ -12,9 +12,10 @@ import qs.Commons
 // a third-party bar-widget plugin is not granted firstPartyServiceFor(), so
 // that service is out of reach from here (see shell.qml pluginShellFor).
 //
-// The pin is a file, not shell state. bindings.lua routes the media keys
-// through media-keys.sh, which reads it and falls back to omarchy's own media
-// service -- "whatever is playing" -- whenever nothing is pinned.
+// The pin and the most recent source are files, not shell state. bindings.lua
+// routes the media keys through media-keys.sh, which reads the pin, then the
+// recent source, and only falls back to omarchy's own media service --
+// "whatever is playing" -- when neither is on the bus.
 Panel {
   id: root
   moduleName: "toby.media"
@@ -29,10 +30,18 @@ Panel {
   property string pinned: ""
 
   // Same naming as `pinned`, for the source that most recently started playing.
-  // It survives that source pausing, so the icon keeps pointing at the last
-  // thing you listened to. Not persisted: after a shell restart it is seeded
-  // from whatever is already playing.
+  // It survives that source pausing, so the icon and the media keys keep
+  // pointing at the last thing you listened to. Mirrored to media-keys.sh's
+  // recent file, which lives for the login session; a shell restart reads it
+  // back.
   property string lastPlayed: ""
+
+  function noteStarted(player) {
+    var name = root.playerName(player)
+    if (name === "") return
+    root.lastPlayed = name
+    Util.execArgv([root.scriptPath(), "recent", name])
+  }
 
   readonly property int seekSeconds: 15
 
@@ -122,6 +131,19 @@ Panel {
   }
 
   Process {
+    id: readRecentProc
+    command: [root.scriptPath(), "recent"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        // A source that started playing while this ran has the newer claim.
+        var name = String(text).trim()
+        if (name !== "" && root.lastPlayed === "") root.lastPlayed = name
+      }
+    }
+  }
+
+  Process {
     id: readPinProc
     command: [root.scriptPath(), "target"]
     stdout: StdioCollector {
@@ -146,14 +168,14 @@ Panel {
 
       Component.onCompleted: {
         if (tracker.modelData && tracker.modelData.isPlaying && root.lastPlayed === "")
-          root.lastPlayed = root.playerName(tracker.modelData)
+          root.noteStarted(tracker.modelData)
       }
 
       Connections {
         target: tracker.modelData
         function onIsPlayingChanged() {
           if (tracker.modelData.isPlaying)
-            root.lastPlayed = root.playerName(tracker.modelData)
+            root.noteStarted(tracker.modelData)
         }
       }
     }
@@ -162,7 +184,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    readRecentProc.running = true
+  }
   onOpenedChanged: if (opened) refresh()
 
   BarIconButton {
@@ -497,9 +522,10 @@ Panel {
           width: parent.width
           textFormat: Text.PlainText
           text: root.pinned === ""
-            ? "Media keys: whatever is playing (omarchy default). SHIFT + next/prev jumps "
-              + root.seekSeconds + "s."
-            : "Media keys: " + root.pinned + ". SHIFT + next/prev jumps "
+            ? "Media keys: the last source you played"
+              + (root.lastPlayed !== "" ? " (" + root.lastPlayed + ")" : "")
+              + ". ALT + next/prev jumps " + root.seekSeconds + "s."
+            : "Media keys: " + root.pinned + ". ALT + next/prev jumps "
               + root.seekSeconds + "s. Click the pin again for automatic."
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily

@@ -72,8 +72,9 @@ o.bind("XF86AudioRaiseVolume", "Volume up", "omarchy-audio-output-volume +2", { 
 o.bind("XF86AudioLowerVolume", "Volume down", "omarchy-audio-output-volume -2", { locked = true, repeating = true })
 
 -- Media keys go through the toby.media bar widget's pin: while a source is
--- pinned there they drive that player over MPRIS, otherwise the script hands
--- off to omarchy-shell and the default "whatever is playing" behaviour.
+-- pinned there they drive that player over MPRIS, otherwise they drive the
+-- source that most recently started playing, and only with neither does the
+-- script hand off to omarchy-shell's "whatever is playing" behaviour.
 -- SHIFT + Play/Pause still cycles the source through omarchy's media service.
 local media_keys = "~/.config/omarchy/plugins/toby.media/media-keys.sh"
 hl.unbind("XF86AudioPlay")
@@ -89,7 +90,7 @@ o.bind("XF86AudioPrev", "Previous track", media_keys .. " previous", { locked = 
 o.bind("ALT + XF86AudioPlay", "Next track", media_keys .. " next", { locked = true })
 o.bind("ALT + SHIFT + XF86AudioPlay", "Previous track", media_keys .. " previous", { locked = true })
 
--- Scrub the current source by 15s. SHIFT + next/prev were free; SHIFT +
--- play/pause stays on omarchy's "switch media source".
-o.bind("SHIFT + XF86AudioNext", "Forward 15s", media_keys .. " forward 15", { locked = true, repeating = true })
-o.bind("SHIFT + XF86AudioPrev", "Back 15s", media_keys .. " back 15", { locked = true, repeating = true })
+-- Scrub the current source by 15s. ALT + next/prev are free in omarchy's
+-- defaults; ALT + play/pause is already next track.
+o.bind("ALT + XF86AudioNext", "Forward 15s", media_keys .. " forward 15", { locked = true, repeating = true })
+o.bind("ALT + XF86AudioPrev", "Back 15s", media_keys .. " back 15", { locked = true, repeating = true })
