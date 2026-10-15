@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# Resizes already-open foot windows when the font size in foot.ini changes.
+#
+# Foot reads its config only at startup and has no reload signal, so Omarchy's
+# text size control (omarchy-display-text-size) rewrites `:size=` and then just
+# tells you to restart foot. This watches foot.ini and sends foot's own zoom
+# shortcut (Ctrl+= or Ctrl+-, 0.5pt per press) to every foot window through
+# Hyprland, enough times to cover the change, then closes Omarchy's "Restart
+# Foot" notification.
+#
+# Zooming is relative to the last size applied (kept in $state), so a window
+# you zoomed by hand keeps its offset. Runs as foot-live-font-size.service.
+# No `set -e`: a long-running watcher shouldn't die on one failed hyprctl call.
+set -uo pipefail
+
+config="$HOME/.config/foot/foot.ini"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/foot-live-font-size"
+notif_id_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-display-text-size.foot-notif-id"
+# Foot's default font-size-adjustment. Change this if foot.ini sets it.
+step=0.5
+# Clicking through sizes rewrites foot.ini several times a second; wait for
+# this much quiet and apply the net change once.
+debounce=0.3
+
+config_size() {
+  grep -oP '^font=.*:size=\K[0-9.]+' "$config" 2>/dev/null | head -1
+}
+
+foot_windows() {
+  hyprctl clients -j | jq -r '.[] | select(.class == "foot" or .class == "footclient") | .address'
+}
+
+zoom_windows() {
+  local old="$1" new="$2" key presses lua=""
+
+  read -r key presses < <(awk -v o="$old" -v n="$new" -v s="$step" 'BEGIN {
+    d = (n - o) / s
+    printf "%s %d\n", (d < 0 ? "minus" : "equal"), (d < 0 ? -d : d) + 0.5
+  }')
+  ((presses > 0)) || return 0
+
+  while read -r address; do
+    lua+="for _ = 1, $presses do hl.dispatch(hl.dsp.send_shortcut({ mods = \"CTRL\", key = \"$key\", window = \"address:$address\" })) end "
+  done < <(foot_windows)
+
+  [[ -z $lua ]] || hyprctl eval "$lua" >/dev/null
+}
+
+close_notification() {
+  # Only if Omarchy sent it for this change, not a stale id from earlier.
+  [[ -f $notif_id_file ]] || return 0
+  (($(date +%s) - $(stat -c %Y "$notif_id_file") < 10)) || return 0
+  gdbus call --session --dest org.freedesktop.Notifications \
+    --object-path /org/freedesktop/Notifications \
+    --method org.freedesktop.Notifications.CloseNotification \
+    "$(<"$notif_id_file")" >/dev/null 2>&1 || true
+}
+
+apply() {
+  local new old
+  new="$(config_size)"
+  [[ -n $new ]] || return 0
+  old="$(cat "$state" 2>/dev/null || true)"
+  [[ $old != "$new" ]] || return 0
+
+  echo "$new" >"$state"
+  [[ -z $old ]] || zoom_windows "$old" "$new"
+
+  # Omarchy sends its notification just after writing foot.ini, so it may not
+  # exist yet; try now and again shortly.
+  close_notification
+  (sleep 1 && close_notification) &
+}
+
+mkdir -p "$(dirname "$state")"
+
+# With no foot windows open (login), nothing is at the old size: start fresh.
+if [[ -z $(foot_windows) ]]; then
+  config_size >"$state"
+fi
+apply
+
+# Watch the directory for omarchy-display-text-size's sed -i, which renames a
+# new file over foot.ini (replacing the dotfiles symlink, if any), and the
+# resolved file for in-place edits made through the symlink.
+inotifywait -m -q -e close_write,moved_to,create --format '%f' \
+  "$(dirname "$config")" "$(readlink -f "$config")" |
+  while read -r _; do
+    while read -r -t "$debounce" _; do :; done
+    apply
+  done

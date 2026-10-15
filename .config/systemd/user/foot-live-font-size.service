@@ -1,0 +1,12 @@
+[Unit]
+Description=Resize open foot windows when the font size in foot.ini changes
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/foot-live-font-size
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

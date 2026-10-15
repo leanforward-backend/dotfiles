@@ -1,2 +1,7 @@
 # Backups made by link.sh when it replaces a real file
 *.bak.*
+
+# Per-machine text size, rewritten by Omarchy's text size slider (via a rename,
+# which replaces a symlink and leaves the shell watching the repo copy, so the
+# slider snaps back). Each machine keeps its own.
+.config/omarchy/shell.toml

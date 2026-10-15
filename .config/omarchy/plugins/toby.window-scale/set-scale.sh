@@ -54,6 +54,30 @@ case "$app" in
     echo "$scale" > "${XDG_CONFIG_HOME:-$HOME/.config}/unity-ui-scale"
     echo "  unity scale set to $scale (applies when Hub next starts)" >> "$log"
     ;;
+  uvcs)
+    # Unity Version Control is Avalonia, which takes a fractional
+    # AVALONIA_GLOBAL_SCALE_FACTOR at startup. ~/.local/bin/linplasticx reads
+    # it from this file. Written in place: the path is a dotfiles symlink.
+    case "$scale" in
+      ''|*[!0-9.]*) echo "  ERROR: uvcs scale must be a number, got '$scale'" >> "$log"; exit 1 ;;
+    esac
+    echo "$scale" > "${XDG_CONFIG_HOME:-$HOME/.config}/uvcs-ui-scale" || exit 1
+
+    # Restart only if it's open. Pending changes live in the workspace, so a
+    # restart costs nothing beyond a half-typed checkin comment at worst.
+    if pgrep -x linplasticx >/dev/null; then
+      pkill -TERM -x linplasticx
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -x linplasticx >/dev/null || break
+        sleep 0.5
+      done
+      pkill -KILL -x linplasticx 2>/dev/null
+      hyprctl dispatch "hl.dsp.exec_cmd(\"$HOME/.local/bin/linplasticx\")" >/dev/null 2>&1
+      echo "  uvcs restarted at $scale" >> "$log"
+    else
+      echo "  uvcs scale set to $scale (not running)" >> "$log"
+    fi
+    ;;
   *)
     echo "  ERROR: unknown app '$app'" >> "$log"
     exit 1

@@ -11,7 +11,8 @@ import qs.Commons
 // Spotify is Electron, so it takes a fractional Chromium device scale factor
 // and is restarted on the spot. Unity reads the GTK scale factor (GDK_SCALE),
 // which is integer-only and read at process start, so it offers 1x/2x and
-// lands the next time Unity Hub starts.
+// lands the next time Unity Hub starts. Unity Version Control is Avalonia,
+// which takes a fractional scale at startup, so it is restarted like Spotify.
 Panel {
   id: root
   moduleName: "toby.window-scale"
@@ -19,11 +20,14 @@ Panel {
 
   property real spotifyScale: 0.8
   property int unityScale: 1
+  property real uvcsScale: 1.0
   property bool applying: false
+  property bool applyingUvcs: false
 
   function refresh() {
     if (!readSpotifyProc.running) readSpotifyProc.running = true
     if (!readUnityProc.running) readUnityProc.running = true
+    if (!readUvcsProc.running) readUvcsProc.running = true
   }
 
   function scriptPath() {
@@ -43,6 +47,14 @@ Panel {
     root.unityScale = scale
     applyProc.command = [root.scriptPath(), "unity", String(scale)]
     applyProc.running = true
+  }
+
+  function applyUvcs(v) {
+    var scale = Math.round(v * 20) / 20  // snap to 0.05
+    root.uvcsScale = scale
+    root.applyingUvcs = true
+    applyUvcsProc.command = [root.scriptPath(), "uvcs", scale.toFixed(2)]
+    applyUvcsProc.running = true
   }
 
   Process {
@@ -72,9 +84,30 @@ Panel {
   }
 
   Process {
+    id: readUvcsProc
+    command: ["bash", "-c",
+      "cat \"${XDG_CONFIG_HOME:-$HOME/.config}/uvcs-ui-scale\" 2>/dev/null | tr -dc '0-9.' | head -c 5"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var v = parseFloat(String(text).trim())
+        if (!isNaN(v) && v > 0) root.uvcsScale = v
+      }
+    }
+  }
+
+  Process {
     id: applyProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: if (!running) root.applying = false
+  }
+
+  // Separate from applyProc so a Spotify restart and a UVCS restart can't
+  // clobber each other's command.
+  Process {
+    id: applyUvcsProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: if (!running) root.applyingUvcs = false
   }
 
   implicitWidth: button.implicitWidth
@@ -99,7 +132,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(330))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(520))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(700))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -228,6 +261,58 @@ Panel {
         Text {
           width: parent.width
           text: "Applies when Unity Hub next starts. Quit Hub from its tray icon, not just its window."
+          color: Qt.darker(root.bar.foreground, 1.5)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        // ---------- Unity Version Control ----------
+        PanelSeparator {
+          foreground: root.bar.foreground
+        }
+
+        Item {
+          width: parent.width
+          implicitHeight: Math.max(uvcsHdr.implicitHeight, uvcsPct.implicitHeight)
+
+          PanelSectionHeader {
+            id: uvcsHdr
+            text: "UNITY VERSION CONTROL"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            id: uvcsPct
+            text: Math.round((uvcsSlider.dragging ? uvcsSlider.liveValue : root.uvcsScale) * 100) + "%"
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+          }
+        }
+
+        PanelSlider {
+          id: uvcsSlider
+          bar: root.bar
+          width: parent.width
+          minimum: 0.75
+          maximum: 3.0
+          step: 0.05
+          value: root.uvcsScale
+          enabled: !root.applyingUvcs
+          opacity: root.applyingUvcs ? 0.5 : 1.0
+          onReleased: function(v) { root.applyUvcs(v) }
+        }
+
+        Text {
+          width: parent.width
+          text: root.applyingUvcs ? "Restarting Unity Version Control…" : "Restarts Unity Version Control if it's open."
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.caption

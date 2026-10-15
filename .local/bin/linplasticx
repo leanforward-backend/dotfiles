@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Launches the Unity Version Control (Plastic SCM) GUI with a pinned UI scale.
+#
+# The client is Avalonia on XWayland. With Hyprland's xwayland
+# force_zero_scaling it draws at raw 1x pixels, which is tiny on a scale-2
+# monitor. AVALONIA_GLOBAL_SCALE_FACTOR overrides that, takes fractions, and is
+# read at startup only. The value lives in ~/.config/uvcs-ui-scale so the
+# UI Scale bar widget can set it.
+#
+#   linplasticx                     # scale from the config file
+#   UI_SCALE=1.5 linplasticx        # one-off override
+set -euo pipefail
+
+scale_file="${XDG_CONFIG_HOME:-$HOME/.config}/uvcs-ui-scale"
+scale=1
+[ -r "$scale_file" ] && scale="$(tr -dc '0-9.' < "$scale_file" | head -c 5)"
+[ -z "$scale" ] && scale=1
+export AVALONIA_GLOBAL_SCALE_FACTOR="${UI_SCALE:-$scale}"
+
+# On glibc 2.44 UVCS sees every workspace as "Removed locally"; this runner
+# overlays glibc 2.43 for it. Machine-local, so fall back to a direct launch.
+runner="$HOME/.local/share/uvcs-glibc/run"
+if [ -x "$runner" ]; then
+  exec "$runner" /opt/plasticscm5/client/linplasticx "$@"
+fi
+exec /opt/plasticscm5/client/linplasticx "$@"
