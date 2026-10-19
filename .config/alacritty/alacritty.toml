@@ -21,6 +21,10 @@ decorations = "None"
 bindings = [
 { key = "Insert", mods = "Shift", action = "Paste" },
 { key = "Insert", mods = "Control", action = "Copy" },
+# Ctrl+C copies (matches foot); Ctrl+Shift+C sends the interrupt ^C instead.
+# Ctrl+V is handled by Hyprland (hypr/bindings.lua -> terminal-paste).
+{ key = "C", mods = "Control", action = "Copy" },
+{ key = "C", mods = "Control|Shift", chars = "\u0003" },
 # Send Shift+Return as CSI-u so TUIs can distinguish it from Return without treating it as Alt+Return.
 { key = "Return", mods = "Shift", chars = "\u001B[13;2u" },
 # Legacy encoding sends Alt+Shift+Return the same as Alt+Return; send CSI-u so tmux can match M-S-Enter.
