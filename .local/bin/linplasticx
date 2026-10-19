@@ -17,10 +17,16 @@ scale=1
 [ -z "$scale" ] && scale=1
 export AVALONIA_GLOBAL_SCALE_FACTOR="${UI_SCALE:-$scale}"
 
-# On glibc 2.44 UVCS sees every workspace as "Removed locally"; this runner
-# overlays glibc 2.43 for it. Machine-local, so fall back to a direct launch.
+# On glibc 2.44 UVCS sees every workspace as "Removed locally". Each machine
+# carries one machine-local workaround: a runner that overlays glibc 2.43, or an
+# LD_PRELOAD shim for fts_children() (see ~/.local/lib/plastic-fts-fix/fts_fix.c).
+# With neither, fall back to a direct launch.
 runner="$HOME/.local/share/uvcs-glibc/run"
 if [ -x "$runner" ]; then
   exec "$runner" /opt/plasticscm5/client/linplasticx "$@"
+fi
+fts_fix="$HOME/.local/lib/plastic-fts-fix/fts_fix.so"
+if [ -r "$fts_fix" ]; then
+  export LD_PRELOAD="$fts_fix${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 exec /opt/plasticscm5/client/linplasticx "$@"
