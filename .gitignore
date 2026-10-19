@@ -5,3 +5,7 @@
 # which replaces a symlink and leaves the shell watching the repo copy, so the
 # slider snaps back). Each machine keeps its own.
 .config/omarchy/shell.toml
+
+# Per-machine Spotify scale, rewritten by the UI Scale widget. Each machine
+# keeps its own regular file.
+.config/spotify-flags.conf
