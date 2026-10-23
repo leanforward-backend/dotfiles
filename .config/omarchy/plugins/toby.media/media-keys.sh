@@ -122,6 +122,31 @@ case "$action" in
     read_pin
     exit 0
     ;;
+  cycle)
+    # Pin the next source after the one the keys drive now, wrapping around.
+    names=()
+    while read -r bus; do
+      [[ -n $bus ]] || continue
+      name="${bus#"$MPRIS_PREFIX".}"
+      names+=("${name%%.instance*}")
+    done < <(list_players)
+    ((${#names[@]} > 0)) || exit 0
+    mapfile -t names < <(printf '%s\n' "${names[@]}" | sort -u)
+
+    current=$(read_pin)
+    [[ -n $current ]] || current=$(read_recent)
+    next=0
+    for i in "${!names[@]}"; do
+      [[ ${names[i]} == "$current" ]] && next=$(((i + 1) % ${#names[@]}))
+    done
+
+    mkdir -p "$(dirname "$PIN_FILE")"
+    printf '%s' "${names[next]}" >"$PIN_FILE"
+    bus=$(find_bus "${names[next]}")
+    identity=$(player_prop "$bus" org.mpris.MediaPlayer2 Identity)
+    omarchy-shell -q osd show "{\"icon\":\"media\",\"message\":\"Media keys: ${identity:-${names[next]}}\"}"
+    exit 0
+    ;;
   recent)
     # With a player, record it; without one, print what is recorded.
     if [[ -n ${2:-} ]]; then

@@ -90,6 +90,10 @@ o.bind("XF86AudioPrev", "Previous track", media_keys .. " previous", { locked = 
 o.bind("ALT + XF86AudioPlay", "Next track", media_keys .. " next", { locked = true })
 o.bind("ALT + SHIFT + XF86AudioPlay", "Previous track", media_keys .. " previous", { locked = true })
 
+-- The keyboard's spare layer-1 key sends KC_F13, which xkb names XF86Tools
+-- (keycode 191), not F13. Pins the next media source.
+o.bind("XF86Tools", "Next media source", media_keys .. " cycle", { locked = true })
+
 -- Scrub the current source by 15s. ALT + next/prev are free in omarchy's
 -- defaults; ALT + play/pause is already next track.
 o.bind("ALT + XF86AudioNext", "Forward 15s", media_keys .. " forward 15", { locked = true, repeating = true })
