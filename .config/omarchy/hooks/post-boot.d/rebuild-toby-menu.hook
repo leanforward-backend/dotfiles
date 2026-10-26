@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Regenerate the toby.menu clone from Omarchy's current stock menu plus
+# customizations.patch, so an Omarchy update can't leave it on stale code.
+"$HOME/.config/omarchy/plugins/toby.menu/rebuild.sh"

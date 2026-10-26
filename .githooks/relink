@@ -6,4 +6,11 @@ set -u
 repo="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 [ -x "$repo/link.sh" ] || exit 0
 "$repo/link.sh" --quiet || echo "dotfiles: link.sh failed (run ./link.sh by hand)" >&2
+
+# The toby.menu plugin's Menu.qml is generated, not tracked; rebuild it so a
+# fresh clone or a pull that changed customizations.patch has a working menu.
+menu_rebuild="$repo/.config/omarchy/plugins/toby.menu/rebuild.sh"
+if [ -x "$menu_rebuild" ] && [ -d "${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/menu" ]; then
+  "$menu_rebuild" || echo "dotfiles: toby.menu rebuild failed (run $menu_rebuild by hand)" >&2
+fi
 exit 0
