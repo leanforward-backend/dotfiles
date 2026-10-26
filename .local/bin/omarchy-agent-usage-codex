@@ -1,0 +1,43 @@
+#!/usr/bin/python3
+"""Use the packaged collector with pipe-safe Codex RPC response reading."""
+import json
+import os
+import runpy
+import select
+import time
+
+
+def rpc_request(proc, request_id, method, params=None, timeout=8):
+    payload = {"id": request_id, "method": method, "params": params or {}}
+    proc.stdin.write(json.dumps(payload) + "\n")
+    proc.stdin.flush()
+    deadline = time.monotonic() + timeout
+    pending = getattr(proc, "_omarchy_rpc_pending", b"")
+    while True:
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            proc._omarchy_rpc_pending = pending
+            try:
+                message = json.loads(line)
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if isinstance(message, dict) and message.get("id") == request_id:
+                return message
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(method)
+        if not select.select([proc.stdout], [], [], min(remaining, 0.25))[0]:
+            continue
+        # Read the pipe directly: TextIOWrapper.readline() can prefetch later
+        # replies, making select() wait although the reply is already buffered.
+        chunk = os.read(proc.stdout.fileno(), 65536)
+        if not chunk:
+            raise RuntimeError(f"Codex app-server closed during {method}")
+        pending += chunk
+        proc._omarchy_rpc_pending = pending
+
+
+if __name__ == "__main__":
+    packaged = runpy.run_path("/usr/bin/omarchy-agent-usage-codex")
+    packaged["main"].__globals__["rpc_request"] = rpc_request
+    packaged["main"]()
