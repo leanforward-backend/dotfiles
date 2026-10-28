@@ -51,17 +51,23 @@ case "$app" in
       1|2) ;;
       *) echo "  ERROR: unity scale must be 1 or 2, got '$scale'" >> "$log"; exit 1 ;;
     esac
-    echo "$scale" > "${XDG_CONFIG_HOME:-$HOME/.config}/unity-ui-scale"
+    conf="${XDG_CONFIG_HOME:-$HOME/.config}/unity-ui-scale"
+    # Per-machine and untracked. A machine that linked it while it was still
+    # in the dotfiles repo has a dangling symlink; replace it with a real file.
+    [ -L "$conf" ] && rm -f "$conf"
+    echo "$scale" > "$conf" || exit 1
     echo "  unity scale set to $scale (applies when Hub next starts)" >> "$log"
     ;;
   uvcs)
     # Unity Version Control is Avalonia, which takes a fractional
     # AVALONIA_GLOBAL_SCALE_FACTOR at startup. ~/.local/bin/linplasticx reads
-    # it from this file. Written in place: the path is a dotfiles symlink.
+    # it from this file, which is per-machine and untracked (see unity above).
     case "$scale" in
       ''|*[!0-9.]*) echo "  ERROR: uvcs scale must be a number, got '$scale'" >> "$log"; exit 1 ;;
     esac
-    echo "$scale" > "${XDG_CONFIG_HOME:-$HOME/.config}/uvcs-ui-scale" || exit 1
+    conf="${XDG_CONFIG_HOME:-$HOME/.config}/uvcs-ui-scale"
+    [ -L "$conf" ] && rm -f "$conf"
+    echo "$scale" > "$conf" || exit 1
 
     # Restart only if it's open. Pending changes live in the workspace, so a
     # restart costs nothing beyond a half-typed checkin comment at worst.
