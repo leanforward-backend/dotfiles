@@ -30,3 +30,4 @@ export PATH="$PATH:$HOME/.dotnet/tools"
 
 # opencode
 export PATH=/home/s/.opencode/bin:$PATH
+. "$HOME/.cargo/env"
