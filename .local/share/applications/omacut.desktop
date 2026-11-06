@@ -1,0 +1,18 @@
+# Override of /usr/share/applications/omacut.desktop.
+# Qt Multimedia's FFmpeg backend hangs omacut (GUI thread deadlocks) when it
+# hardware-decodes through VAAPI on NVIDIA (LIBVA_DRIVER_NAME=nvidia,
+# libva-nvidia-driver): "vaExportSurfaceHandle failed / failed to get textures
+# for frame". An empty QT_FFMPEG_DECODING_HW_DEVICE_TYPES forces software decode.
+[Desktop Entry]
+Type=Application
+Name=Omacut
+GenericName=Video Trimmer
+Comment=Dead-simple video length trimmer
+TryExec=omacut
+Exec=env QT_FFMPEG_DECODING_HW_DEVICE_TYPES= omacut %f
+Icon=omacut
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+MimeType=video/mp4;video/x-matroska;video/quicktime;video/webm;video/x-msvideo;video/mpeg;
+Keywords=video;trim;cut;clip;ffmpeg;
+StartupWMClass=omacut
