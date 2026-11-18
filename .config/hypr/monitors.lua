@@ -26,9 +26,31 @@ local function panel_scale(output, default)
   return scale
 end
 
--- Laptop panel on the left, external monitor on the right (matches physical desk layout).
-hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = panel_scale("eDP-1", 1.6) })
-hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto-right", scale = panel_scale("HDMI-A-1", 1) })
+local function hostname()
+  local f = io.open("/etc/hostname", "r")
+  if not f then return "" end
+  local name = f:read("*l") or ""
+  f:close()
+  return name
+end
+
+if hostname() == "s" then
+  -- Desktop "s" (RTX 5080; the i7-14700KF has no iGPU, so motherboard video ports are dead).
+  -- Matched by description so the rules follow the screens whichever GPU port they're on.
+  local lg = "desc:LG Electronics LG HDR 4K 201NTHM8E737"
+  local side = "desc:XXX AAA" -- 1080p touch screen on the left, rotated to portrait (1080x1920)
+  -- transform: 1 = 90°, 3 = 270°. 1 was upside down on this desk.
+  hl.monitor({ output = side, mode = "1920x1080@60", position = "0x0", scale = 1, transform = 3 })
+  hl.monitor({ output = lg, mode = "3840x2160@60", position = "1080x0", scale = panel_scale("DP-2", 1) })
+  hl.workspace_rule({ workspace = "1", monitor = lg, default = true })
+  -- The side screen's touch panel (USB). Pin it to that screen. Touch does NOT inherit the
+  -- monitor's rotation: without transform = 3 every tap lands one corner clockwise off.
+  hl.device({ name = "ilitek-multi-touch-v5103", output = "HDMI-A-1", transform = 3 })
+else
+  -- Laptop panel on the left, external monitor on the right (matches physical desk layout).
+  hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = panel_scale("eDP-1", 1.6) })
+  hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "auto-right", scale = panel_scale("HDMI-A-1", 1) })
+end
 
 -- Unity Editor has no internal UI scaling on Linux, so its size follows this
 -- monitor's scale. Drop below 1 to shrink everything on this screen:

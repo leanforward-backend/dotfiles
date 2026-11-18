@@ -25,11 +25,24 @@ read_recent() { [[ -f $RECENT_FILE ]] && tr -d '[:space:]' <"$RECENT_FILE"; }
 
 # Bus names carry a per-process suffix for multi-instance players
 # (org.mpris.MediaPlayer2.chromium.instance81932), so match on the stem.
+# Several buses can share a stem, and some are empty placeholders: Spotify's
+# embedded Chromium registers chromium.instance<spotify pid>, always Stopped
+# with no track. Prefer the one playing, then one with a track, then any.
 find_bus() {
-  local name="$1" quoted
+  local name="$1" quoted bus first="" with_track=""
   quoted=$(printf '%s' "$name" | sed 's/[][\.*^$(){}?+|\/]/\\&/g')
-  busctl --user list --no-legend 2>/dev/null | awk '{print $1}' |
-    grep -m1 -E "^${MPRIS_PREFIX//./\\.}\.${quoted}(\.instance[0-9]+)?$"
+  while read -r bus; do
+    [[ -n $bus ]] || continue
+    [[ -n $first ]] || first=$bus
+    if [[ $(player_prop "$bus" org.mpris.MediaPlayer2.Player PlaybackStatus) == "Playing" ]]; then
+      printf '%s' "$bus"
+      return 0
+    fi
+    [[ -z $with_track ]] && track_meta "$bus" | grep -q '"mpris:trackid"' && with_track=$bus
+  done < <(busctl --user list --no-legend 2>/dev/null | awk '{print $1}' |
+    grep -E "^${MPRIS_PREFIX//./\\.}\.${quoted}(\.instance[0-9]+)?$")
+  [[ -n ${with_track:-$first} ]] || return 1
+  printf '%s' "${with_track:-$first}"
 }
 
 list_players() {

@@ -21,7 +21,13 @@ Panel {
   moduleName: "toby.media"
   ipcTarget: "toby.media"
 
-  readonly property var players: Mpris.players ? Mpris.players.values : []
+  // Chromium-based apps register an MPRIS player per process whether or not
+  // anything is playing: an idle browser, and Spotify's embedded Chromium
+  // (chromium.instance<spotify pid>, alongside Spotify's real player). Those
+  // sit at Stopped with empty metadata, so hide any source that is neither
+  // playing nor carrying a track.
+  readonly property var players: (Mpris.players ? Mpris.players.values : [])
+    .filter(p => p && (p.isPlaying || !!p.trackTitle || !!p.trackArtist))
   readonly property var activePlayer: root.pickActive()
   readonly property bool anyPlaying: root.activePlayer !== null && root.activePlayer.isPlaying
 
